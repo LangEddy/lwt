@@ -10,12 +10,20 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useAuthStore } from "../stores/authStore";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const logout = useAuthStore((s) => s.logout);
+
+  const handleSignOut = async () => {
+    await logout();
+    setSidebarOpen(false);
+    navigate("/login", { replace: true });
+  };
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 900px)");
@@ -109,10 +117,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
             </div>
             <button
-              onClick={() => {
-                localStorage.removeItem("access_token");
-                navigate("/login");
-              }}
+              onClick={handleSignOut}
               className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[15px] font-medium text-[var(--color-red)] hover:bg-[var(--color-red-bg)] transition-colors"
             >
               <LogOut size={18} />
@@ -183,10 +188,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
             </div>
             <button
-              onClick={() => {
-                localStorage.removeItem("access_token");
-                navigate("/login");
-              }}
+              onClick={handleSignOut}
               className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[15px] font-medium text-[var(--color-red)] hover:bg-[var(--color-red-bg)] transition-colors"
             >
               <LogOut size={18} />

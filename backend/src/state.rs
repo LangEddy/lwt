@@ -1,20 +1,20 @@
+use jsonwebtoken::jwk::JwkSet;
 use sqlx::PgPool;
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
-    pub jwt_secret: Arc<String>,
-    pub dev_auth_token: Option<Arc<String>>,
+    pub jwks: Arc<JwkSet>,
+    pub supabase_url: Arc<String>,
 }
 
 impl AppState {
-    pub fn new(pool: PgPool, jwt_secret: String) -> Self {
-        let dev_auth_token = std::env::var("DEV_AUTH_TOKEN").ok().map(Arc::new);
+    pub fn new(pool: PgPool, jwks: JwkSet, supabase_url: String) -> Self {
         Self {
             pool,
-            jwt_secret: Arc::new(jwt_secret),
-            dev_auth_token,
+            jwks: Arc::new(jwks),
+            supabase_url: Arc::new(supabase_url),
         }
     }
 }
