@@ -49,6 +49,16 @@ jobs:
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features native-tls,postgres
 
+      - name: Stub Supabase auth schema for CI
+        env:
+          PGPASSWORD: lwt
+        run: |
+          psql -h localhost -U lwt -d lwt <<'SQL'
+            CREATE SCHEMA IF NOT EXISTS auth;
+            CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid
+              LANGUAGE sql STABLE AS $$ SELECT gen_random_uuid() $$;
+          SQL
+
       - name: Run migrations
         env:
           DATABASE_URL: postgres://lwt:lwt@localhost/lwt
