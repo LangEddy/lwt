@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/* Word level colors — defined outside @theme so Tailwind doesn't tree-shake them
+   (they're only used in inline styles, not utility classes) */
+:root {
+  /* Match design tokens from design/app-data.js LEVELS */
+  --color-word-0-bg: oklch(85% 0.08 10);
+  --color-word-0-text: oklch(35% 0.12 10);
+  --color-word-1-bg: oklch(80% 0.12 15);
+  --color-word-1-text: oklch(30% 0.15 15);
+  --color-word-2-bg: oklch(82% 0.10 30);
+  --color-word-2-text: oklch(32% 0.12 30);
+  --color-word-3-bg: oklch(84% 0.10 70);
+  --color-word-3-text: oklch(34% 0.12 70);
+  --color-word-4-bg: oklch(84% 0.10 130);
+  --color-word-4-text: oklch(34% 0.12 130);
+  --color-word-5-bg: transparent;
+  --color-word-5-text: inherit;
+}
+
+@theme {
+  /* Design system colors from prototype */
+  --color-bg: oklch(97% 0.007 80);
+  --color-bg2: oklch(93% 0.010 80);
+  --color-bg3: oklch(89% 0.012 80);
+  --color-surface: oklch(99% 0.004 80);
+  --color-border: oklch(88% 0.012 80);
+  --color-text: oklch(14% 0.012 250);
+  --color-text2: oklch(45% 0.015 250);
+  --color-text3: oklch(65% 0.010 250);
+  --color-accent: oklch(38% 0.01 250);
+  --color-green: oklch(55% 0.16 155);
+  --color-green-bg: oklch(94% 0.06 155);
+  --color-amber: oklch(62% 0.14 80);
+  --color-amber-bg: oklch(94% 0.06 80);
+  --color-red: oklch(56% 0.18 25);
+  --color-red-bg: oklch(94% 0.06 25);
+
+  /* Typography */
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+
+  /* Spacing */
+  --radius-lg: 12px;
+  --radius-md: 10px;
+  --radius-sm: 8px;
+  --nav-height: 64px;
+  --header-height: 56px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+::selection {
+  background: oklch(84% 0.10 155);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: none; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease both;
+}
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}

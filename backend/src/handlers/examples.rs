@@ -1,0 +1,155 @@
+use axum::{
+    extract::{Path, State},
+    Extension, Json,
+};
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+use crate::{auth::Claims, error::AppError, state::AppState};
+
+#[derive(Debug, FromRow, Serialize)]
+pub struct Example {
+    pub id: Uuid,
+    pub word_id: Uuid,
+    pub sentence: String,
+    pub translation: Option<String>,
+    pub note: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateExampleRequest {
+    pub sentence: String,
+    pub translation: Option<String>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateExampleRequest {
+    pub sentence: Option<String>,
+    pub translation: Option<String>,
+    pub note: Option<String>,
+}
+
+pub async fn list_examples(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(word_id): Path<Uuid>,
+) -> Result<Json<Vec<Example>>, AppError> {
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    // Verify word ownership
+    let word_owner: Option<(Uuid,)> = sqlx::query_as("SELECT user_id FROM words WHERE id = $1")
+        .bind(word_id)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    match word_owner {
+        Some((owner_id,)) if owner_id == user_id => {}
+        _ => return Err(AppError::Forbidden),
+    }
+
+    let examples = sqlx::query_as::<_, Example>(
+        "SELECT id, word_id, sentence, translation, note, created_at, updated_at FROM examples WHERE word_id = $1 ORDER BY created_at DESC"
+    )
+    .bind(word_id)
+    .fetch_all(&state.pool)
+    .await?;
+
+    Ok(Json(examples))
+}
+
+pub async fn create_example(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(word_id): Path<Uuid>,
+    Json(body): Json<CreateExampleRequest>,
+) -> Result<Json<Example>, AppError> {
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    let word_owner: Option<(Uuid,)> = sqlx::query_as("SELECT user_id FROM words WHERE id = $1")
+        .bind(word_id)
+        .fetch_optional(&state.pool)
+        .await?;
+
+    match word_owner {
+        Some((owner_id,)) if owner_id == user_id => {}
+        _ => return Err(AppError::Forbidden),
+    }
+
+    let example = sqlx::query_as::<_, Example>(
+        "INSERT INTO examples (word_id, sentence, translation, note) VALUES ($1, $2, $3, $4) RETURNING id, word_id, sentence, translation, note, created_at, updated_at"
+    )
+    .bind(word_id)
+    .bind(body.sentence)
+    .bind(body.translation)
+    .bind(body.note)
+    .fetch_one(&state.pool)
+    .await?;
+
+    Ok(Json(example))
+}
+
+pub async fn update_example(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateExampleRequest>,
+) -> Result<Json<Example>, AppError> {
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    let word_owner: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT w.user_id FROM examples e JOIN words w ON e.word_id = w.id WHERE e.id = $1"
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    match word_owner {
+        Some((owner_id,)) if owner_id == user_id => {}
+        _ => return Err(AppError::Forbidden),
+    }
+
+    let example = sqlx::query_as::<_, Example>(
+        "UPDATE examples SET sentence = COALESCE($1, sentence), translation = COALESCE($2, translation), note = COALESCE($3, note), updated_at = $4 WHERE id = $5 RETURNING id, word_id, sentence, translation, note, created_at, updated_at"
+    )
+    .bind(body.sentence)
+    .bind(body.translation)
+    .bind(body.note)
+    .bind(Utc::now())
+    .bind(id)
+    .fetch_one(&state.pool)
+    .await?;
+
+    Ok(Json(example))
+}
+
+pub async fn delete_example(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    let word_owner: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT w.user_id FROM examples e JOIN words w ON e.word_id = w.id WHERE e.id = $1"
+    )
+    .bind(id)
+    .fetch_optional(&state.pool)
+    .await?;
+
+    match word_owner {
+        Some((owner_id,)) if owner_id == user_id => {}
+        _ => return Err(AppError::Forbidden),
+    }
+
+    sqlx::query("DELETE FROM examples WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "deleted": true })))
+}

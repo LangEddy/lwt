@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LWT — Learn With Text</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="app-data.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: oklch(97% 0.007 80);
+    --bg2: oklch(93% 0.010 80);
+    --bg3: oklch(89% 0.012 80);
+    --surface: oklch(99% 0.004 80);
+    --border: oklch(88% 0.012 80);
+    --text: oklch(14% 0.012 250);
+    --text2: oklch(45% 0.015 250);
+    --text3: oklch(65% 0.010 250);
+    --accent: oklch(38% 0.01 250);
+    --green: oklch(55% 0.16 155);
+    --green-bg: oklch(94% 0.06 155);
+    --amber: oklch(62% 0.14 80);
+    --amber-bg: oklch(94% 0.06 80);
+    --red: oklch(56% 0.18 25);
+    --red-bg: oklch(94% 0.06 25);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --nav-h: 64px;
+    --header-h: 56px;
+    --font: 'DM Sans', system-ui, sans-serif;
+    --font-serif: 'DM Serif Display', Georgia, serif;
+  }
+  html, body { height: 100%; background: var(--bg); font-family: var(--font); color: var(--text); }
+  body { overscroll-behavior: none; }
+  #root { height: 100%; display: flex; flex-direction: column; }
+  input, textarea, select, button { font-family: inherit; }
+  button { cursor: pointer; border: none; background: none; }
+  a { color: inherit; text-decoration: none; }
+  ::selection { background: oklch(84% 0.10 155); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Animations */
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
+  @keyframes scaleIn { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+  @keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+
+  .fade-in { animation: fadeIn 0.25s ease both; }
+  .slide-up { animation: slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1) both; }
+  .scale-in { animation: scaleIn 0.2s ease both; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+// ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "fontScale": 1,
+  "accentHue": 155,
+  "readingLineHeight": 2,
+  "theme": "light"
+}/*EDITMODE-END*/;
+
+// ─── ICONS (minimal SVG) ──────────────────────────────────────────────────────
+const Icon = ({ name, size = 20, strokeWidth = 1.8, color = 'currentColor' }) => {
+  const paths = {
+    home: 'M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H14v-5h-4v5H4a1 1 0 01-1-1V9.5z',
+    list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+    book: 'M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 016.5 22H20V2H6.5A2.5 2.5 0 004 4.5v15z',
+    brain: 'M9.5 2A5.5 5.5 0 0015 7.5c0 .88-.21 1.71-.58 2.45M9.5 2A5.5 5.5 0 004 7.5c0 3.04 2.46 5.5 5.5 5.5m0-11v11m0 0a5.5 5.5 0 010 11m0-11a5.5 5.5 0 000 11M9.5 22v-5.5',
+    plus: 'M12 5v14M5 12h14',
+    back: 'M19 12H5M12 5l-7 7 7 7',
+    menu: 'M3 6h18M3 12h18M3 18h18',
+    x: 'M18 6L6 18M6 6l12 12',
+    search: 'M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z',
+    trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6',
+    edit: 'M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z',
+    user: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z',
+    logout: 'M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1',
+    languages: 'M5 8l6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6',
+    chevron_down: 'M6 9l6 6 6-6',
+    chevron_right: 'M9 18l6-6-6-6',
+    check: 'M20 6L9 17l-5-5',
+    star: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+    filter: 'M22 3H2l8 9.46V19l4 2v-8.54L22 3z',
+    sweep: 'M3 6h18M3 12h12M3 18h8',
+    speaker: 'M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07',
+    note: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M16 13H8M16 17H8M10 9H8',
+    eye: 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 12a3 3 0 100-6 3 3 0 000 6z',
+    google: 'M21.8 10.2H12v3.8h5.6c-.5 2.5-2.7 4-5.6 4a6 6 0 010-12c1.5 0 2.9.6 4 1.5l2.8-2.8A10 10 0 1022 12c0-.6 0-1.2-.2-1.8z',
+    settings: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z',
+  };
+  const d = paths[name] || '';
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+      <path d={d} />
+    </svg>
+  );
+};
+
+// ─── TOKENIZER ─────────────────────────────────────────────────────────────────
+function tokenize(text, dir) {
+  // Simple regex tokenizer: words and non-word punctuation/spaces
+  const tokens = [];
+  // Split into word chars and non-word chars
+  const re = /[\u0000-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u00BF\s]+|[\w\u00C0-\u024F\u0400-\u04FF\u0590-\u05FF\u0600-\u06FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]+/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const val = m[0];
+    const isWord = /[\w\u00C0-\u024F\u0400-\u04FF\u0590-\u05FF\u0600-\u06FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/.test(val);
+    tokens.push({ value: val, isWord });
+  }
+  return tokens;
+}
+
+// ─── LEVEL COLORS ─────────────────────────────────────────────────────────────
+const LEVEL_COLORS = [
+  { bg: 'oklch(87% 0.07 10)', text: 'oklch(32% 0.14 10)' },   // 0 unseen
+  { bg: 'oklch(80% 0.13 15)', text: 'oklch(28% 0.16 15)' },   // 1 unknown
+  { bg: 'oklch(82% 0.10 30)', text: 'oklch(30% 0.14 30)' },   // 2 seen
+  { bg: 'oklch(84% 0.10 70)', text: 'oklch(32% 0.13 70)' },   // 3 ok-ish
+  { bg: 'oklch(84% 0.10 130)', text: 'oklch(32% 0.13 130)' }, // 4 good
+  { bg: 'transparent', text: 'inherit' },                      // 5 known
+];
+
+const LEVEL_LABELS = ['Unseen', 'Unknown', 'Seen', 'Ok-ish', 'Good', 'Known'];
+const LEVEL_SHORT = ['?', 'L1', 'L2', 'L3', 'L4', 'K'];
+
+// ─── APP STATE ─────────────────────────────────────────────────────────────────
+function useAppState() {
+  const [screen, setScreen] = useState('auth');
+  const [authMode, setAuthMode] = useState('login');
+  const [user, setUser] = useState(null);
+  const [texts, setTexts] = useState(SAMPLE_TEXTS);
+  const [wordMap, setWordMap] = useState(() => {
+    const m = {};
+    SAMPLE_WORDS.forEach(w => { m[w.id] = w; });
+    return m;
+  });
+  const [knownWords, setKnownWords] = useState({ ...KNOWN_WORDS });
+  const [currentTextId, setCurrentTextId] = useState(null);
+  const [activeWordPopup, setActiveWordPopup] = useState(null); // {word, rect, textId}
+  const [wordListFilter, setWordListFilter] = useState({ lang: 'all', level: 'all', search: '' });
+  const [learnQueue, setLearnQueue] = useState([]);
+  const [learnIndex, setLearnIndex] = useState(0);
+  const [learnPhase, setLearnPhase] = useState('question'); // question | answer
+  const [toast, setToast] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const showToast = useCallback((msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  const navigate = useCallback((s) => {
+    setScreen(s);
+    setSidebarOpen(false);
+    setActiveWordPopup(null);
+  }, []);
+
+  const login = useCallback((email, password) => {
+    setUser({ ...DEMO_USER, email });
+    setScreen('dashboard');
+  }, []);
+
+  const logout = useCallback(() => {
+    setUser(null);
+    setScreen('auth');
+  }, []);
+
+  const updateWordLevel = useCallback((word, level) => {
+    const key = word.toLowerCase();
+    setKnownWords(prev => ({ ...prev, [key]: level }));
+    // Update or add to wordMap
+    setWordMap(prev => {
+      const existing = Object.values(prev).find(w => w.word.toLowerCase() === key);
+      if (existing) {
+        return { ...prev, [existing.id]: { ...existing, level } };
+      }
+      const id = 'w' + Date.now();
+      return { ...prev, [id]: { id, word, language: 'LAT', level, note: '', examples: [] } };
+    });
+  }, []);
+
+  const updateWordNote = useCallback((word, note) => {
+    const key = word.toLowerCase();
+    setWordMap(prev => {
+      const existing = Object.values(prev).find(w => w.word.toLowerCase() === key);
+      if (existing) {
+        return { ...prev, [existing.id]: { ...existing, note } };
+      }
+      const id = 'w' + Date.now();
+      return { ...prev, [id]: { id, word, language: 'LAT', level: 0, note, examples: [] } };
+    });
+  }, []);
+
+  const addWordExample = useCallback((word, sentence) => {
+    const key = word.toLowerCase();
+    setWordMap(prev => {
+      const existing = Object.values(prev).find(w => w.word.toLowerCase() === key);
+      if (existing) {
+        return { ...prev, [existing.id]: { ...existing, examples: [...(existing.examples || []), sentence] } };
+      }
+      return prev;
+    });
+  }, []);
+
+  const addText = useCallback((title, language, content) => {
+    const id = String(Date.now());
+    const lang = LANGUAGES.find(l => l.name === language || l.code === language);
+    setTexts(prev => [{ id, title, language: lang ? lang.code : 'EN', dir: lang ? lang.dir : 'ltr', content, createdAt: new Date().toISOString().slice(0, 10) }, ...prev]);
+    return id;
+  }, []);
+
+  const deleteText = useCallback((id) => {
+    setTexts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const startLearn = useCallback(() => {
+    // Build queue from words with examples
+    const queue = Object.values(wordMap).filter(w => w.examples && w.examples.length > 0 && w.level < 5);
+    setLearnQueue(queue);
+    setLearnIndex(0);
+    setLearnPhase('question');
+    navigate('learn');
+  }, [wordMap, navigate]);
+
+  const wordList = useMemo(() => Object.values(wordMap), [wordMap]);
+
+  return {
+    screen, navigate, authMode, setAuthMode,
+    user, login, logout,
+    texts, addText, deleteText,
+    wordMap, wordList, knownWords, updateWordLevel, updateWordNote, addWordExample,
+    currentTextId, setCurrentTextId,
+    activeWordPopup, setActiveWordPopup,
+    wordListFilter, setWordListFilter,
+    learnQueue, learnIndex, setLearnIndex, learnPhase, setLearnPhase, startLearn,
+    toast, showToast, sidebarOpen, setSidebarOpen,
+  };
+}
+
+// ─── UI COMPONENTS ─────────────────────────────────────────────────────────────
+
+const Btn = ({ children, variant = 'primary', onClick, style, disabled, small }) => {
+  const base = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    gap: 6, fontFamily: 'inherit', fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer',
+    border: 'none', borderRadius: 10, transition: 'all 0.15s',
+    padding: small ? '8px 16px' : '13px 20px',
+    fontSize: small ? 13 : 15,
+    opacity: disabled ? 0.5 : 1,
+  };
+  const variants = {
+    primary: { background: 'var(--text)', color: 'var(--surface)', },
+    secondary: { background: 'var(--surface)', color: 'var(--text)', border: '1.5px solid var(--border)' },
+    ghost: { background: 'transparent', color: 'var(--text2)', padding: small ? '6px 10px' : '10px 14px' },
+    danger: { background: 'var(--red-bg)', color: 'var(--red)' },
+    green: { background: 'var(--green)', color: '#fff' },
+  };
+  return (
+    <button style={{ ...base, ...variants[variant], ...style }} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  );
+};
+
+const Input = ({ label, placeholder, value, onChange, type = 'text', multiline, rows = 4, style }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    {label && <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>{label}</label>}
+    {multiline ? (
+      <textarea
+        rows={rows}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ padding: '12px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', fontSize: 15, resize: 'vertical', lineHeight: 1.6, outline: 'none', fontFamily: 'inherit', color: 'var(--text)', ...style }}
+      />
+    ) : (
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ padding: '12px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', fontSize: 15, outline: 'none', fontFamily: 'inherit', color: 'var(--text)', ...style }}
+      />
+    )}
+  </div>
+);
+
+const Select = ({ label, value, onChange, options, hint }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    {label && <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', letterSpacing: '0.03em', textTransform: 'uppercase' }}>{label}</label>}
+    <div style={{ position: 'relative' }}>
+      <select
+        value={value} onChange={e => onChange(e.target.value)}
+        style={{ width: '100%', padding: '12px 36px 12px 14px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--surface)', fontSize: 15, appearance: 'none', outline: 'none', fontFamily: 'inherit', color: 'var(--text)', cursor: 'pointer' }}
+      >
+        {options.map(o => <option key={o.value || o} value={o.value || o}>{o.label || o}</option>)}
+      </select>
+      <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text3)' }}>
+        <Icon name="chevron_down" size={16} />
+      </span>
+    </div>
+    {hint && <span style={{ fontSize: 12, color: 'var(--text3)' }}>{hint}</span>}
+  </div>
+);
+
+const LangBadge = ({ code, size = 'sm' }) => (
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', padding: size === 'sm' ? '2px 7px' : '3px 9px',
+    borderRadius: 6, background: 'var(--bg2)', color: 'var(--text2)',
+    fontSize: size === 'sm' ? 11 : 12, fontWeight: 700, letterSpacing: '0.05em'
+  }}>{code}</span>
+);
+
+const LevelBadge = ({ level }) => (
+  <span style={{
+    display: 'inline-flex', alignItems: 'center', padding: '2px 8px',
+    borderRadius: 6, background: LEVEL_COLORS[level]?.bg || 'var(--bg2)',
+    color: LEVEL_COLORS[level]?.text || 'var(--text2)',
+    fontSize: 11, fontWeight: 700, letterSpacing: '0.04em'
+  }}>{LEVEL_SHORT[level]}</span>
+);
+
+const Card = ({ children, style, onClick }) => (
+  <div onClick={onClick} style={{
+    background: 'var(--surface)', borderRadius: 12, border: '1px solid var(--border)',
+    padding: 16, ...(onClick ? { cursor: 'pointer' } : {}), ...style
+  }}>{children}</div>
+);
+
+// ─── TOAST ─────────────────────────────────────────────────────────────────────
+const Toast = ({ toast }) => {
+  if (!toast) return null;
+  return (
+    <div style={{
+      position: 'fixed', bottom: 90, left: '50%', transform: 'translateX(-50%)',
+      background: 'var(--text)', color: 'var(--surface)', padding: '10px 20px',
+      borderRadius: 20, fontSize: 14, fontWeight: 500, zIndex: 9999,
+      pointerEvents: 'none', animation: 'fadeIn 0.2s ease',
+      whiteSpace: 'nowrap', boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
+    }}>{toast.msg}</div>
+  );
+};
+
+// ─── HEADER ────────────────────────────────────────────────────────────────────
+const Header = ({ title, onBack, onMenu, actions, user, onLogout }) => (
+  <header style={{
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '0 16px', height: 'var(--header-h)',
+    background: 'var(--text)', color: 'var(--surface)',
+    flexShrink: 0, position: 'sticky', top: 0, zIndex: 100,
+  }}>
+    {onMenu && (
+      <button onClick={onMenu} style={{ padding: 8, color: 'var(--surface)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 8, display: 'flex' }}>
+        <Icon name="menu" size={20} color="currentColor" />
+      </button>
+    )}
+    {onBack && (
+      <button onClick={onBack} style={{ padding: 8, color: 'var(--surface)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 8, display: 'flex' }}>
+        <Icon name="back" size={20} color="currentColor" />
+      </button>
+    )}
+    <span style={{ flex: 1, fontWeight: 700, fontSize: 17, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+    {actions}
+    {user && (
+      <button onClick={onLogout} style={{ padding: 8, color: 'var(--surface)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 8, display: 'flex' }}>
+        <Icon name="logout" size={18} color="currentColor" />
+      </button>
+    )}
+  </header>
+);
+
+// ─── BOTTOM NAV ─────────────────────────────────────────────────────────────────
+const BottomNav = ({ active, navigate }) => {
+  const tabs = [
+    { id: 'dashboard', icon: 'home', label: 'Home' },
+    { id: 'texts', icon: 'book', label: 'Texts' },
+    { id: 'learn', icon: 'brain', label: 'Learn' },
+    { id: 'wordlist', icon: 'list', label: 'Words' },
+  ];
+  return (
+    <nav style={{
+      display: 'flex', alignItems: 'stretch',
+      background: 'var(--surface)', borderTop: '1px solid var(--border)',
+      height: 'var(--nav-h)', flexShrink: 0, position: 'sticky', bottom: 0, zIndex: 100,
+    }}>
+      {tabs.map(t => (
+        <button key={t.id} onClick={() => navigate(t.id)} style={{
+          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 3, background: 'none', border: 'none', cursor: 'pointer',
+          color: active === t.id ? 'var(--text)' : 'var(--text3)',
+          fontSize: 11, fontWeight: active === t.id ? 700 : 500, transition: 'color 0.15s',
+        }}>
+          <Icon name={t.icon} size={22} strokeWidth={active === t.id ? 2.2 : 1.6} />
+          {t.label}
+        </button>
+      ))}
+    </nav>
+  );
+};
+
+// ─── SIDEBAR ───────────────────────────────────────────────────────────────────
+const Sidebar = ({ open, onClose, navigate, user, onLogout }) => (
+  <>
+    {open && <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, backdropFilter: 'blur(2px)' }} />}
+    <aside style={{
+      position: 'fixed', top: 0, left: 0, bottom: 0, width: 280,
+      background: 'var(--surface)', borderRight: '1px solid var(--border)',
+      zIndex: 201, display: 'flex', flexDirection: 'column',
+      transform: open ? 'translateX(0)' : 'translateX(-100%)',
+      transition: 'transform 0.25s cubic-bezier(0.4,0,0.2,1)',
+      boxShadow: open ? '4px 0 24px rgba(0,0,0,0.12)' : 'none',
+    }}>
+      <div style={{ padding: '24px 20px 16px', borderBottom: '1px solid var(--border)' }}>
+        <span style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 400, letterSpacing: '-0.02em' }}>LWT</span>
+        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>Learn With Text</p>
+      </div>
+      {user && (
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--bg2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700 }}>
+            {user.name[0]}
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{user.name}</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)' }}>{user.email}</div>
+          </div>
+        </div>
+      )}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+        {[
+          { id: 'dashboard', icon: 'home', label: 'Dashboard' },
+          { id: 'texts', icon: 'book', label: 'Texts' },
+          { id: 'learn', icon: 'brain', label: 'Learn' },
+          { id: 'wordlist', icon: 'list', label: 'Word List' },
+          { id: 'languages', icon: 'languages', label: 'Languages' },
+          { id: 'settings', icon: 'settings', label: 'Settings' },
+        ].map(item => (
+          <button key={item.id} onClick={() => { navigate(item.id); onClose(); }} style={{
+            display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+            padding: '11px 12px', borderRadius: 9, background: 'none', border: 'none',
+            cursor: 'pointer', color: 'var(--text)', fontSize: 15, fontWeight: 500,
+            transition: 'background 0.12s',
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'none'}
+          >
+            <Icon name={item.icon} size={18} />
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ padding: '12px 12px 24px', borderTop: '1px solid var(--border)' }}>
+        <button onClick={onLogout} style={{
+          display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+          padding: '11px 12px', borderRadius: 9, background: 'none', border: 'none',
+          cursor: 'pointer', color: 'var(--red)', fontSize: 15, fontWeight: 500,
+        }}>
+          <Icon name="logout" size={18} color="var(--red)" />
+          Sign Out
+        </button>
+      </div>
+    </aside>
+  </>
+);
+
+// ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
+const AuthScreen = ({ mode, setMode, onLogin }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setTimeout(() => { onLogin(email || 'demo@example.com', password); setLoading(false); }, 600);
+  };
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, minHeight: 0, overflowY: 'auto' }}>
+      <div style={{ width: '100%', maxWidth: 400, animation: 'fadeIn 0.3s ease' }}>
+        <div style={{ textAlign: 'center', marginBottom: 36 }}>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 38, marginBottom: 6, letterSpacing: '-0.02em' }}>LWT</div>
+          <div style={{ fontSize: 15, color: 'var(--text2)', lineHeight: 1.5 }}>Learn vocabulary by reading.<br/>Click words, track progress.</div>
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {mode === 'register' && (
+            <Input label="Name" placeholder="Your name" value={name} onChange={setName} />
+          )}
+          <Input label="Email" type="email" placeholder="you@example.com" value={email} onChange={setEmail} />
+          <Input label="Password" type="password" placeholder="••••••••" value={password} onChange={setPassword} />
+          <Btn variant="primary" style={{ width: '100%', marginTop: 4 }} disabled={loading}>
+            {loading ? 'Signing in…' : mode === 'login' ? 'Sign In' : 'Create Account'}
+          </Btn>
+        </form>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0' }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          <span style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 500 }}>or</span>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        </div>
+        <button onClick={() => onLogin('google@example.com', '')} style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          padding: '13px 20px', borderRadius: 10, border: '1.5px solid var(--border)',
+          background: 'var(--surface)', cursor: 'pointer', fontSize: 15, fontWeight: 600, color: 'var(--text)',
+          transition: 'background 0.15s',
+        }}>
+          <Icon name="google" size={18} />
+          Continue with Google
+        </button>
+        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 14, color: 'var(--text2)' }}>
+          {mode === 'login' ? (
+            <>No account? <button onClick={() => setMode('register')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: 'var(--text)', textDecoration: 'underline' }}>Register</button></>
+          ) : (
+            <>Have an account? <button onClick={() => setMode('login')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, color: 'var(--text)', textDecoration: 'underline' }}>Sign in</button></>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── DASHBOARD ────────────────────────────────────────────────────────────────
+const DashboardScreen = ({ user, texts, navigate, setCurrentTextId, wordList, startLearn }) => {
+  const stats = user?.stats || {};
+  const recentTexts = texts.slice(0, 3);
+  const withExamples = wordList.filter(w => w.examples && w.examples.length > 0 && w.level < 5).length;
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '24px 16px 16px' }}>
+      <div style={{ maxWidth: 600, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 32, fontWeight: 400, letterSpacing: '-0.02em', marginBottom: 6 }}>LWT</h1>
+          <p style={{ color: 'var(--text2)', fontSize: 15, lineHeight: 1.5 }}>Learn vocabulary by reading.<br/>Paste text, click words, track your progress.</p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+          {[
+            { label: 'Words Tracked', value: stats.wordsTracked || wordList.length, color: 'var(--text)' },
+            { label: 'Known', value: wordList.filter(w => w.level === 5).length || stats.known, color: 'var(--green)' },
+            { label: 'Learning', value: wordList.filter(w => w.level > 0 && w.level < 5).length || stats.learning, color: 'var(--amber)' },
+            { label: 'With Examples', value: withExamples, color: 'var(--green)' },
+          ].map(stat => (
+            <div key={stat.label} style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid var(--border)', padding: '16px 18px' }}>
+              <div style={{ fontSize: 30, fontWeight: 700, color: stat.color, lineHeight: 1 }}>{stat.value}</div>
+              <div style={{ fontSize: 13, color: 'var(--text2)', marginTop: 4 }}>{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+          <Btn variant="primary" style={{ width: '100%' }} onClick={() => navigate('new-text')}>
+            <Icon name="plus" size={18} color="currentColor" /> Start Reading
+          </Btn>
+          {withExamples > 0 && (
+            <Btn variant="secondary" style={{ width: '100%' }} onClick={startLearn}>
+              <Icon name="brain" size={18} /> Learn ({withExamples} words ready)
+            </Btn>
+          )}
+          <Btn variant="secondary" style={{ width: '100%' }} onClick={() => navigate('wordlist')}>
+            <Icon name="list" size={18} /> Word List
+          </Btn>
+        </div>
+
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ fontSize: 17, fontWeight: 700 }}>Recent Texts</h2>
+            <button onClick={() => navigate('texts')} style={{ fontSize: 13, color: 'var(--text2)', background: 'none', border: 'none', cursor: 'pointer' }}>See all</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {recentTexts.map(t => (
+              <div key={t.id} onClick={() => { setCurrentTextId(t.id); navigate('read'); }}
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', cursor: 'pointer', transition: 'background 0.12s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--surface)'}
+              >
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>{t.title}</span>
+                  <LangBadge code={t.language} />
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{t.content}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── TEXTS LIST ───────────────────────────────────────────────────────────────
+const TextsScreen = ({ texts, navigate, setCurrentTextId, deleteText, showToast }) => {
+  const [search, setSearch] = useState('');
+  const filtered = texts.filter(t => t.title.toLowerCase().includes(search.toLowerCase()) || t.content.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+        <div style={{ position: 'relative', maxWidth: 600, margin: '0 auto' }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }}>
+            <Icon name="search" size={16} />
+          </span>
+          <input
+            placeholder="Search texts…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--bg)', fontSize: 15, outline: 'none', fontFamily: 'inherit' }}
+          />
+        </div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+        <div style={{ maxWidth: 600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button onClick={() => navigate('new-text')} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '14px', borderRadius: 12, border: '1.5px dashed var(--border)',
+            background: 'none', cursor: 'pointer', fontSize: 15, fontWeight: 600, color: 'var(--text2)',
+            width: '100%',
+          }}>
+            <Icon name="plus" size={18} /> New Text
+          </button>
+          {filtered.map(t => (
+            <div key={t.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ flex: 1, cursor: 'pointer', minWidth: 0 }} onClick={() => { setCurrentTextId(t.id); navigate('read'); }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>{t.title}</span>
+                  <LangBadge code={t.language} />
+                </div>
+                <p style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{t.content}</p>
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{t.createdAt}</div>
+              </div>
+              <button onClick={() => { deleteText(t.id); showToast('Text deleted'); }} style={{ padding: 8, color: 'var(--text3)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 8, flexShrink: 0, transition: 'color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                onMouseLeave={e => e.currentTarget.style.color = 'var(--text3)'}
+              >
+                <Icon name="trash" size={16} />
+              </button>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text3)' }}>
+              <Icon name="book" size={36} />
+              <p style={{ marginTop: 10, fontSize: 15 }}>No texts yet. Add one!</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── NEW TEXT ─────────────────────────────────────────────────────────────────
+const NewTextScreen = ({ onBack, addText, navigate, setCurrentTextId, showToast }) => {
+  const [title, setTitle] = useState('');
+  const [language, setLanguage] = useState('Latin');
+  const [content, setContent] = useState('');
+
+  const handleSubmit = () => {
+    if (!content.trim()) { showToast('Please add some text content', 'error'); return; }
+    const id = addText(title || 'Untitled', language, content);
+    setCurrentTextId(id);
+    navigate('read');
+  };
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px' }}>
+      <div style={{ maxWidth: 600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>New Reading Text</h2>
+        <Input label="Title" placeholder="e.g., Chapter 1: The Beginning" value={title} onChange={setTitle} />
+        <Select
+          label="Language"
+          value={language}
+          onChange={setLanguage}
+          options={LANGUAGES.map(l => ({ value: l.name, label: l.name }))}
+          hint={<button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text2)', fontSize: 12, padding: 0, textDecoration: 'underline' }}>Manage languages</button>}
+        />
+        <Input label="Text Content" placeholder="Paste your text here…" value={content} onChange={setContent} multiline rows={12} />
+        <div style={{ display: 'flex', gap: 10, paddingBottom: 16 }}>
+          <Btn variant="primary" style={{ flex: 1 }} onClick={handleSubmit}>
+            <Icon name="book" size={16} color="currentColor" /> Read Text
+          </Btn>
+          <Btn variant="secondary" onClick={onBack}>Cancel</Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── WORD POPUP ───────────────────────────────────────────────────────────────
+const WordPopup = ({ data, onClose, knownWords, updateWordLevel, updateWordNote, addWordExample, showToast }) => {
+  if (!data) return null;
+  const { word } = data;
+  const key = word.toLowerCase();
+  const level = knownWords[key] !== undefined ? knownWords[key] : 0;
+  const [note, setNote] = useState('');
+  const [sentence, setSentence] = useState('');
+  const [showAddSentence, setShowAddSentence] = useState(false);
+
+  // Init note from global wordmap if available
+  useEffect(() => {
+    const wm = Object.values(window.wordMapRef || {}).find(w => w.word.toLowerCase() === key);
+    if (wm) setNote(wm.note || '');
+  }, [key]);
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 300, backdropFilter: 'blur(2px)' }} />
+      <div style={{
+        position: 'fixed', left: '50%', bottom: 0, transform: 'translateX(-50%)',
+        width: '100%', maxWidth: 480, background: 'var(--surface)',
+        borderRadius: '20px 20px 0 0', zIndex: 301, padding: '20px 20px 32px',
+        animation: 'slideUp 0.3s cubic-bezier(0.34,1.56,0.64,1) both',
+        maxHeight: '85vh', overflowY: 'auto',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border)' }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 2 }}>{word}</h3>
+            {data.isPhrase && (
+              <span style={{ fontSize: 12, color: 'var(--text3)', fontStyle: 'italic' }}>multi-word phrase</span>
+            )}
+          </div>
+          <button onClick={onClose} style={{ padding: 8, background: 'var(--bg2)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Knowledge Level</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6 }}>
+            {LEVEL_LABELS.map((label, i) => (
+              <button key={i} onClick={() => { updateWordLevel(word, i); showToast(`Marked as ${label}`); }}
+                style={{
+                  padding: '8px 4px', borderRadius: 8, border: `2px solid ${level === i ? 'var(--text)' : 'transparent'}`,
+                  background: i === 5 ? 'var(--bg2)' : LEVEL_COLORS[i].bg,
+                  cursor: 'pointer', fontSize: 10, fontWeight: 700, color: i === 5 ? 'var(--text2)' : LEVEL_COLORS[i].text,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                  transition: 'border-color 0.12s',
+                }}>
+                <span style={{ fontSize: 13 }}>{LEVEL_SHORT[i]}</span>
+                <span style={{ fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Notes / Translation</div>
+            <div style={{ fontSize: 11, color: 'var(--text3)' }}>auto-saved</div>
+          </div>
+          <textarea
+            placeholder="Add translation, notes…"
+            value={note} onChange={e => { setNote(e.target.value); updateWordNote(word, e.target.value); }}
+            rows={3}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--bg)', fontSize: 14, resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5 }}
+          />
+        </div>
+
+        {!showAddSentence ? (
+          <button onClick={() => setShowAddSentence(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+            borderRadius: 10, border: '1.5px dashed var(--border)', background: 'none',
+            cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--text2)', width: '100%',
+          }}>
+            <Icon name="plus" size={16} /> Add Example Sentence
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Example Sentence</div>
+            <textarea
+              placeholder="Type an example sentence…"
+              value={sentence} onChange={e => setSentence(e.target.value)}
+              rows={2}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--bg)', fontSize: 14, resize: 'none', outline: 'none', fontFamily: 'inherit' }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn variant="primary" small onClick={() => { if (sentence.trim()) { addWordExample(word, sentence); showToast('Example saved!'); setSentence(''); setShowAddSentence(false); } }}>
+                Save Sentence
+              </Btn>
+              <Btn variant="ghost" small onClick={() => setShowAddSentence(false)}>Cancel</Btn>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+          <Btn variant="primary" style={{ width: '100%' }} onClick={onClose}>
+            Done
+          </Btn>
+        </div>
+      </div>
+    </>
+  );
+};
+
+// ─── READING VIEW ─────────────────────────────────────────────────────────────
+const ReadScreen = ({ text, knownWords, updateWordLevel, updateWordNote, addWordExample, showToast, onBack, tweaks }) => {
+  const [selectedWord, setSelectedWord] = useState(null);
+  const [sweep, setSweep] = useState(false);
+
+  if (!text) return (
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text3)' }}>
+      <div style={{ textAlign: 'center' }}>
+        <Icon name="book" size={48} />
+        <p style={{ marginTop: 12, fontSize: 16 }}>No text selected</p>
+      </div>
+    </div>
+  );
+
+  const tokens = tokenize(text.content, text.dir);
+  const unseenCount = tokens.filter(t => t.isWord && knownWords[t.value.toLowerCase()] === undefined).length;
+
+  const handleWordClick = (word) => {
+    setSelectedWord(word);
+  };
+
+  const handleSweepAll = () => {
+    tokens.filter(t => t.isWord && knownWords[t.value.toLowerCase()] === undefined)
+      .forEach(t => updateWordLevel(t.value, 1));
+    showToast(`Marked ${unseenCount} words as L1`);
+  };
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Read toolbar */}
+      <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 4, marginRight: 8 }}>
+          {[1,2,3,4,5].map(i => (
+            <div key={i} style={{ width: 16, height: 16, borderRadius: '50%', background: LEVEL_COLORS[i].bg, border: '1px solid var(--border)' }} />
+          ))}
+        </div>
+        <div style={{ flex: 1 }} />
+        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text2)', padding: 6 }}>
+          <Icon name="edit" size={16} />
+        </button>
+        {unseenCount > 0 && (
+          <button onClick={handleSweepAll} style={{
+            padding: '5px 12px', borderRadius: 20, background: 'var(--text)', color: 'var(--surface)',
+            border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
+          }}>
+            Sweep ({unseenCount})
+          </button>
+        )}
+        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', padding: 6 }}>
+          <Icon name="trash" size={16} />
+        </button>
+      </div>
+
+      {/* Text body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 18px 32px' }}>
+        <div style={{
+          maxWidth: 640, margin: '0 auto',
+          fontSize: 17, lineHeight: tweaks ? tweaks.readingLineHeight : 2.0,
+          direction: text.dir, textAlign: text.dir === 'rtl' ? 'right' : 'left',
+          fontFamily: 'Georgia, serif', color: 'var(--text)',
+        }}>
+          {tokens.map((token, idx) => {
+            if (!token.isWord) {
+              return <span key={idx}>{token.value}</span>;
+            }
+            const key = token.value.toLowerCase();
+            const level = knownWords[key] !== undefined ? knownWords[key] : 0;
+            const isUnseen = knownWords[key] === undefined;
+            const colors = isUnseen ? LEVEL_COLORS[0] : LEVEL_COLORS[level];
+            const isTransparent = level === 5 && !isUnseen;
+
+            return (
+              <span key={idx}
+                onClick={() => handleWordClick(token.value)}
+                style={{
+                  background: colors.bg,
+                  color: isTransparent ? 'inherit' : colors.text,
+                  borderRadius: 4,
+                  padding: isTransparent ? '1px 0' : '1px 3px',
+                  cursor: 'pointer',
+                  display: 'inline',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {token.value}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      {selectedWord && (
+        <WordPopup
+          data={{ word: selectedWord }}
+          onClose={() => setSelectedWord(null)}
+          knownWords={knownWords}
+          updateWordLevel={updateWordLevel}
+          updateWordNote={updateWordNote}
+          addWordExample={addWordExample}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── WORD LIST ────────────────────────────────────────────────────────────────
+const WordListScreen = ({ wordList, knownWords, updateWordLevel, showToast, filter, setFilter }) => {
+  const [expandedId, setExpandedId] = useState(null);
+
+  const filtered = wordList.filter(w => {
+    if (filter.lang !== 'all' && w.language !== filter.lang) return false;
+    if (filter.level !== 'all' && String(w.level) !== filter.level) return false;
+    if (filter.search && !w.word.toLowerCase().includes(filter.search.toLowerCase()) && !(w.note || '').toLowerCase().includes(filter.search.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <div style={{ padding: '12px 16px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ position: 'relative' }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)' }}>
+            <Icon name="search" size={16} />
+          </span>
+          <input
+            placeholder="Search words or notes…"
+            value={filter.search} onChange={e => setFilter(f => ({ ...f, search: e.target.value }))}
+            style={{ width: '100%', padding: '10px 14px 10px 36px', borderRadius: 10, border: '1.5px solid var(--border)', background: 'var(--bg)', fontSize: 15, outline: 'none', fontFamily: 'inherit' }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <select value={filter.lang} onChange={e => setFilter(f => ({ ...f, lang: e.target.value }))}
+              style={{ width: '100%', padding: '8px 30px 8px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', fontSize: 13, appearance: 'none', outline: 'none', fontFamily: 'inherit', cursor: 'pointer' }}>
+              <option value="all">All Languages</option>
+              {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
+            </select>
+            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text3)' }}><Icon name="chevron_down" size={14} /></span>
+          </div>
+          <div style={{ flex: 1, position: 'relative' }}>
+            <select value={filter.level} onChange={e => setFilter(f => ({ ...f, level: e.target.value }))}
+              style={{ width: '100%', padding: '8px 30px 8px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--surface)', fontSize: 13, appearance: 'none', outline: 'none', fontFamily: 'inherit', cursor: 'pointer' }}>
+              <option value="all">All Levels</option>
+              {LEVEL_LABELS.map((l, i) => <option key={i} value={String(i)}>{l}</option>)}
+            </select>
+            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text3)' }}><Icon name="chevron_down" size={14} /></span>
+          </div>
+          <Btn variant="primary" small onClick={() => {}}>Add Word</Btn>
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text2)' }}>{filtered.length} word{filtered.length !== 1 ? 's' : ''}</div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px 16px' }}>
+        <div style={{ maxWidth: 600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {filtered.map(w => (
+            <div key={w.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                onClick={() => setExpandedId(expandedId === w.id ? null : w.id)}>
+                <span style={{ fontWeight: 700, fontSize: 16, flex: 1 }}>{w.word}</span>
+                <LangBadge code={w.language} />
+                <LevelBadge level={w.level} />
+                <button style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 4 }}>
+                  <Icon name="chevron_down" size={14} />
+                </button>
+                <button style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 4 }}>
+                  <Icon name="trash" size={14} />
+                </button>
+              </div>
+              {expandedId === w.id && (
+                <div style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border)', marginTop: -1 }}>
+                  <div style={{ paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, marginBottom: 4 }}>NOTE</div>
+                      <div style={{ fontSize: 14, color: w.note ? 'var(--text)' : 'var(--text3)', fontStyle: w.note ? 'normal' : 'italic' }}>
+                        {w.note || 'No definition'} <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text2)', textDecoration: 'underline' }}>Edit</button>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, marginBottom: 6 }}>LEVEL</div>
+                      <div style={{ display: 'flex', gap: 5 }}>
+                        {LEVEL_SHORT.map((s, i) => (
+                          <button key={i} onClick={() => { updateWordLevel(w.word, i); showToast(`Marked as ${LEVEL_LABELS[i]}`); }}
+                            style={{ padding: '5px 8px', borderRadius: 6, border: `1.5px solid ${w.level === i ? 'var(--text)' : 'transparent'}`, background: LEVEL_COLORS[i].bg || 'var(--bg2)', cursor: 'pointer', fontSize: 11, fontWeight: 700, color: LEVEL_COLORS[i].text || 'var(--text2)' }}>
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {w.examples && w.examples.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 12, color: 'var(--text3)', fontWeight: 600, marginBottom: 4 }}>EXAMPLES</div>
+                        {w.examples.map((ex, i) => (
+                          <div key={i} style={{ fontSize: 13, color: 'var(--text2)', padding: '6px 10px', background: 'var(--bg)', borderRadius: 8, marginBottom: 4, fontStyle: 'italic' }}>"{ex}"</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text3)' }}>
+              <Icon name="list" size={40} />
+              <p style={{ marginTop: 12, fontSize: 15 }}>No words match your filters</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── LEARN (SPACED REPETITION) ────────────────────────────────────────────────
+const LearnScreen = ({ wordList, learnQueue, learnIndex, setLearnIndex, learnPhase, setLearnPhase, updateWordLevel, showToast, navigate }) => {
+  const [answerNote, setAnswerNote] = useState('');
+
+  if (learnQueue.length === 0) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
+        <div style={{ fontSize: 56 }}>🎯</div>
+        <h2 style={{ fontSize: 22, fontWeight: 700, textAlign: 'center' }}>No cards to review!</h2>
+        <p style={{ color: 'var(--text2)', textAlign: 'center', lineHeight: 1.5 }}>Add example sentences to words while reading to start learning with spaced repetition.</p>
+        <Btn variant="primary" onClick={() => navigate('texts')}>Go Read</Btn>
+      </div>
+    );
+  }
+
+  if (learnIndex >= learnQueue.length) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 16 }}>
+        <div style={{ fontSize: 56 }}>✅</div>
+        <h2 style={{ fontSize: 22, fontWeight: 700 }}>Session complete!</h2>
+        <p style={{ color: 'var(--text2)' }}>You reviewed {learnQueue.length} cards.</p>
+        <Btn variant="primary" onClick={() => { setLearnIndex(0); setLearnPhase('question'); }}>Review Again</Btn>
+        <Btn variant="ghost" onClick={() => navigate('dashboard')}>Back to Home</Btn>
+      </div>
+    );
+  }
+
+  const card = learnQueue[learnIndex];
+  const example = card.examples?.[0] || '';
+  const progress = learnIndex / learnQueue.length;
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 20, gap: 16, maxWidth: 540, margin: '0 auto', width: '100%' }}>
+      {/* Progress */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ flex: 1, height: 6, background: 'var(--bg2)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${progress * 100}%`, background: 'var(--green)', borderRadius: 3, transition: 'width 0.3s ease' }} />
+        </div>
+        <span style={{ fontSize: 13, color: 'var(--text2)', fontWeight: 600 }}>{learnIndex}/{learnQueue.length}</span>
+      </div>
+
+      {/* Card */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16 }}>
+        <div style={{ background: 'var(--surface)', borderRadius: 16, border: '1px solid var(--border)', padding: 24, minHeight: 180, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Translate this sentence</div>
+          <p style={{ fontSize: 19, lineHeight: 1.7, fontFamily: 'Georgia, serif', color: 'var(--text)' }}>
+            {/* Highlight the target word */}
+            {example.split(new RegExp(`(${card.word})`, 'i')).map((part, i) =>
+              part.toLowerCase() === card.word.toLowerCase()
+                ? <mark key={i} style={{ background: LEVEL_COLORS[card.level]?.bg || LEVEL_COLORS[0].bg, borderRadius: 4, padding: '1px 3px' }}>{part}</mark>
+                : <span key={i}>{part}</span>
+            )}
+          </p>
+
+          {learnPhase === 'answer' && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, animation: 'fadeIn 0.2s ease' }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Your note</div>
+              <div style={{ fontSize: 15, color: card.note ? 'var(--text)' : 'var(--text3)', marginBottom: 10 }}>{card.note || 'No note added yet'}</div>
+              <textarea
+                placeholder="Update your note…"
+                value={answerNote} onChange={e => setAnswerNote(e.target.value)}
+                rows={2}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1.5px solid var(--border)', background: 'var(--bg)', fontSize: 14, resize: 'none', outline: 'none', fontFamily: 'inherit' }}
+              />
+            </div>
+          )}
+        </div>
+
+        {learnPhase === 'question' ? (
+          <Btn variant="primary" style={{ width: '100%' }} onClick={() => setLearnPhase('answer')}>
+            Show Answer
+          </Btn>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text2)', textAlign: 'center' }}>How well did you know it?</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {[
+                { label: 'Again', color: 'var(--red)', bg: 'var(--red-bg)', lvl: 1 },
+                { label: 'Hard', color: 'var(--amber)', bg: 'var(--amber-bg)', lvl: 2 },
+                { label: 'Good', color: 'var(--green)', bg: 'var(--green-bg)', lvl: 4 },
+                { label: 'Easy', color: 'var(--green)', bg: 'var(--green-bg)', lvl: 5 },
+              ].map(btn => (
+                <button key={btn.label} onClick={() => {
+                  updateWordLevel(card.word, btn.lvl);
+                  setLearnIndex(i => i + 1);
+                  setLearnPhase('question');
+                  setAnswerNote('');
+                  showToast(`Marked: ${btn.label}`);
+                }} style={{
+                  padding: '12px 8px', borderRadius: 10, border: `1.5px solid ${btn.color}`,
+                  background: btn.bg, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                  color: btn.color, transition: 'all 0.12s',
+                }}>
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── LANGUAGES SCREEN ─────────────────────────────────────────────────────────
+const LanguagesScreen = () => (
+  <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px' }}>
+    <div style={{ maxWidth: 600, margin: '0 auto' }}>
+      <p style={{ color: 'var(--text2)', marginBottom: 20 }}>Manage language settings, TTS, and dictionary URLs.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {LANGUAGES.map(l => (
+          <div key={l.code} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <LangBadge code={l.code} size="md" />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, fontSize: 15 }}>{l.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)' }}>{l.dir.toUpperCase()} · No TTS configured</div>
+            </div>
+            <button style={{ background: 'none', border: 'none', color: 'var(--text3)', cursor: 'pointer', padding: 6 }}>
+              <Icon name="settings" size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+// ─── SETTINGS SCREEN ──────────────────────────────────────────────────────────
+const SettingsScreen = ({ user, logout }) => (
+  <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px' }}>
+    <div style={{ maxWidth: 600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 14, border: '1px solid var(--border)', padding: 20, display: 'flex', gap: 14, alignItems: 'center' }}>
+        <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--bg2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700 }}>
+          {user?.name?.[0]}
+        </div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{user?.name}</div>
+          <div style={{ fontSize: 13, color: 'var(--text3)' }}>{user?.email}</div>
+        </div>
+      </div>
+      <Btn variant="danger" style={{ width: '100%' }} onClick={logout}>
+        <Icon name="logout" size={16} color="var(--red)" /> Sign Out
+      </Btn>
+    </div>
+  </div>
+);
+
+// ─── TWEAKS COMPONENT ─────────────────────────────────────────────────────────
+const AppTweaks = ({ tweaks, setTweak }) => (
+  <TweaksPanel>
+    <TweakSection label="Display">
+      <TweakSlider label="Font Scale" value={tweaks.fontScale} min={0.8} max={1.4} step={0.05} onChange={v => setTweak('fontScale', v)} />
+      <TweakSlider label="Line Height" value={tweaks.readingLineHeight} min={1.5} max={2.8} step={0.1} onChange={v => setTweak('readingLineHeight', v)} />
+    </TweakSection>
+    <TweakSection label="Theme">
+      <TweakRadio label="Color Scheme" value={tweaks.theme} options={['light', 'dark', 'sepia']} onChange={v => setTweak('theme', v)} />
+    </TweakSection>
+  </TweaksPanel>
+);
+
+// ─── ROOT APP ─────────────────────────────────────────────────────────────────
+const App = () => {
+  const state = useAppState();
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Expose wordMap globally for popup
+  useEffect(() => {
+    window.wordMapRef = state.wordMap;
+  }, [state.wordMap]);
+
+  // Apply theme
+  useEffect(() => {
+    const root = document.documentElement;
+    if (tweaks.theme === 'dark') {
+      root.style.setProperty('--bg', 'oklch(14% 0.01 250)');
+      root.style.setProperty('--bg2', 'oklch(19% 0.01 250)');
+      root.style.setProperty('--bg3', 'oklch(24% 0.01 250)');
+      root.style.setProperty('--surface', 'oklch(18% 0.01 250)');
+      root.style.setProperty('--border', 'oklch(28% 0.01 250)');
+      root.style.setProperty('--text', 'oklch(95% 0.006 80)');
+      root.style.setProperty('--text2', 'oklch(70% 0.01 250)');
+      root.style.setProperty('--text3', 'oklch(50% 0.01 250)');
+    } else if (tweaks.theme === 'sepia') {
+      root.style.setProperty('--bg', 'oklch(95% 0.025 80)');
+      root.style.setProperty('--bg2', 'oklch(91% 0.028 75)');
+      root.style.setProperty('--bg3', 'oklch(87% 0.030 75)');
+      root.style.setProperty('--surface', 'oklch(97% 0.020 80)');
+      root.style.setProperty('--border', 'oklch(85% 0.030 75)');
+      root.style.setProperty('--text', 'oklch(20% 0.03 70)');
+      root.style.setProperty('--text2', 'oklch(40% 0.025 70)');
+      root.style.setProperty('--text3', 'oklch(60% 0.020 70)');
+    } else {
+      root.style.setProperty('--bg', 'oklch(97% 0.007 80)');
+      root.style.setProperty('--bg2', 'oklch(93% 0.010 80)');
+      root.style.setProperty('--bg3', 'oklch(89% 0.012 80)');
+      root.style.setProperty('--surface', 'oklch(99% 0.004 80)');
+      root.style.setProperty('--border', 'oklch(88% 0.012 80)');
+      root.style.setProperty('--text', 'oklch(14% 0.012 250)');
+      root.style.setProperty('--text2', 'oklch(45% 0.015 250)');
+      root.style.setProperty('--text3', 'oklch(65% 0.010 250)');
+    }
+    root.style.setProperty('font-size', `${tweaks.fontScale * 16}px`);
+  }, [tweaks.theme, tweaks.fontScale]);
+
+  const {
+    screen, navigate, authMode, setAuthMode,
+    user, login, logout,
+    texts, addText, deleteText,
+    wordList, knownWords, updateWordLevel, updateWordNote, addWordExample,
+    currentTextId, setCurrentTextId,
+    wordListFilter, setWordListFilter,
+    learnQueue, learnIndex, setLearnIndex, learnPhase, setLearnPhase, startLearn,
+    toast, showToast, sidebarOpen, setSidebarOpen,
+  } = state;
+
+  const currentText = texts.find(t => t.id === currentTextId);
+  const isAuthed = screen !== 'auth';
+
+  const getHeader = () => {
+    switch (screen) {
+      case 'dashboard': return { title: 'Dashboard', onMenu: () => setSidebarOpen(true) };
+      case 'texts': return { title: 'Texts', onMenu: () => setSidebarOpen(true) };
+      case 'new-text': return { title: 'New Text', onBack: () => navigate('texts') };
+      case 'read': return { title: currentText?.title || 'Reading', onBack: () => navigate('texts') };
+      case 'wordlist': return { title: 'Word List', onMenu: () => setSidebarOpen(true) };
+      case 'learn': return { title: 'Learn', onMenu: () => setSidebarOpen(true) };
+      case 'languages': return { title: 'Languages', onBack: () => navigate('settings') };
+      case 'settings': return { title: 'Settings', onMenu: () => setSidebarOpen(true) };
+      default: return { title: 'LWT' };
+    }
+  };
+
+  const headerProps = getHeader();
+  // Desktop: sidebar always visible, no bottom nav, no hamburger
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 900);
+  useEffect(() => {
+    const handler = () => setIsDesktop(window.innerWidth >= 900);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  const showBottomNav = isAuthed && !isDesktop && !['new-text', 'read'].includes(screen);
+  const showDesktopSidebar = isAuthed && isDesktop;
+
+  const renderScreen = () => {
+    switch (screen) {
+      case 'auth':
+        return <AuthScreen mode={authMode} setMode={setAuthMode} onLogin={login} />;
+      case 'dashboard':
+        return <DashboardScreen user={user} texts={texts} navigate={navigate} setCurrentTextId={setCurrentTextId} wordList={wordList} startLearn={startLearn} />;
+      case 'texts':
+        return <TextsScreen texts={texts} navigate={navigate} setCurrentTextId={setCurrentTextId} deleteText={deleteText} showToast={showToast} />;
+      case 'new-text':
+        return <NewTextScreen onBack={() => navigate('texts')} addText={addText} navigate={navigate} setCurrentTextId={setCurrentTextId} showToast={showToast} />;
+      case 'read':
+        return <ReadScreen text={currentText} knownWords={knownWords} updateWordLevel={updateWordLevel} updateWordNote={updateWordNote} addWordExample={addWordExample} showToast={showToast} onBack={() => navigate('texts')} tweaks={tweaks} />;
+      case 'wordlist':
+        return <WordListScreen wordList={wordList} knownWords={knownWords} updateWordLevel={updateWordLevel} showToast={showToast} filter={wordListFilter} setFilter={setWordListFilter} />;
+      case 'learn':
+        return <LearnScreen wordList={wordList} learnQueue={learnQueue} learnIndex={learnIndex} setLearnIndex={setLearnIndex} learnPhase={learnPhase} setLearnPhase={setLearnPhase} updateWordLevel={updateWordLevel} showToast={showToast} navigate={navigate} />;
+      case 'languages':
+        return <LanguagesScreen />;
+      case 'settings':
+        return <SettingsScreen user={user} logout={logout} />;
+      default:
+        return <DashboardScreen user={user} texts={texts} navigate={navigate} setCurrentTextId={setCurrentTextId} wordList={wordList} startLearn={startLearn} />;
+    }
+  };
+
+  // ── Desktop sidebar (always visible, not a drawer) ──────────────────────────
+  const DesktopSidebar = () => {
+    const navItems = [
+      { id: 'dashboard', icon: 'home', label: 'Dashboard' },
+      { id: 'texts', icon: 'book', label: 'Texts' },
+      { id: 'learn', icon: 'brain', label: 'Learn' },
+      { id: 'wordlist', icon: 'list', label: 'Word List' },
+      { id: 'languages', icon: 'languages', label: 'Languages' },
+      { id: 'settings', icon: 'settings', label: 'Settings' },
+    ];
+    return (
+      <aside style={{
+        width: 240, flexShrink: 0, display: 'flex', flexDirection: 'column',
+        borderRight: '1px solid var(--border)', background: 'var(--surface)',
+        height: '100%', overflow: 'hidden',
+      }}>
+        {/* Brand */}
+        <div style={{ padding: '20px 20px 14px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 24, letterSpacing: '-0.02em' }}>LWT</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 1 }}>Learn With Text</div>
+        </div>
+        {/* User */}
+        {user && (
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--bg2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
+              {user.name[0]}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+            </div>
+          </div>
+        )}
+        {/* Nav */}
+        <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+          {navItems.map(item => (
+            <button key={item.id} onClick={() => navigate(item.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+              padding: '10px 12px', borderRadius: 9, background: screen === item.id ? 'var(--bg2)' : 'none',
+              border: 'none', cursor: 'pointer', color: screen === item.id ? 'var(--text)' : 'var(--text2)',
+              fontSize: 14, fontWeight: screen === item.id ? 700 : 500, transition: 'all 0.12s',
+            }}
+            onMouseEnter={e => { if (screen !== item.id) e.currentTarget.style.background = 'var(--bg)'; }}
+            onMouseLeave={e => { if (screen !== item.id) e.currentTarget.style.background = 'none'; }}
+            >
+              <Icon name={item.icon} size={17} strokeWidth={screen === item.id ? 2.2 : 1.6} />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        {/* Sign out */}
+        <div style={{ padding: '10px 10px 16px', borderTop: '1px solid var(--border)' }}>
+          <button onClick={logout} style={{
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+            padding: '10px 12px', borderRadius: 9, background: 'none', border: 'none',
+            cursor: 'pointer', color: 'var(--red)', fontSize: 14, fontWeight: 500,
+          }}>
+            <Icon name="logout" size={17} color="var(--red)" /> Sign Out
+          </button>
+        </div>
+      </aside>
+    );
+  };
+
+  // ── Desktop page header (inside main content, not top bar) ──────────────────
+  const DesktopPageHeader = () => {
+    const titles = {
+      dashboard: 'Dashboard', texts: 'Texts', 'new-text': 'New Reading Text',
+      read: currentText?.title || 'Reading', wordlist: 'Word List',
+      learn: 'Learn', languages: 'Languages', settings: 'Settings',
+    };
+    const showBack = ['new-text', 'read'].includes(screen);
+    const backTarget = screen === 'read' ? 'texts' : 'texts';
+    return (
+      <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        {showBack && (
+          <button onClick={() => navigate(backTarget)} style={{ padding: '6px 8px', background: 'var(--bg2)', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text2)', fontSize: 13, fontWeight: 600 }}>
+            <Icon name="back" size={15} /> Back
+          </button>
+        )}
+        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>{titles[screen] || 'LWT'}</h1>
+      </div>
+    );
+  };
+
+  if (screen === 'auth') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <AuthScreen mode={authMode} setMode={setAuthMode} onLogin={login} />
+        <Toast toast={toast} />
+        <AppTweaks tweaks={tweaks} setTweak={setTweak} />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* Desktop: persistent sidebar */}
+      {showDesktopSidebar && <DesktopSidebar />}
+
+      {/* Main content column */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflow: 'hidden' }}>
+
+        {/* Mobile top header */}
+        {!isDesktop && (
+          <Header
+            title={headerProps.title}
+            onBack={headerProps.onBack}
+            onMenu={headerProps.onMenu}
+            user={['dashboard', 'texts', 'wordlist', 'learn', 'settings'].includes(screen) ? user : null}
+            onLogout={logout}
+          />
+        )}
+
+        {/* Desktop inline page title */}
+        {isDesktop && <DesktopPageHeader />}
+
+        {/* Screen content */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+          {renderScreen()}
+        </div>
+
+        {/* Mobile bottom nav */}
+        {showBottomNav && <BottomNav active={screen} navigate={navigate} />}
+      </div>
+
+      {/* Mobile: overlay sidebar (drawer) */}
+      {!isDesktop && (
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} navigate={navigate} user={user} onLogout={logout} />
+      )}
+
+      <Toast toast={toast} />
+      <AppTweaks tweaks={tweaks} setTweak={setTweak} />
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
