@@ -12,8 +12,7 @@ services:
   frontend:
     image: ghcr.io/${GITHUB_USER}/lwt-frontend:${IMAGE_TAG:-latest}
     ports:
-      - "20159:80"
-      - "[::]:20159:80"
+      - "80:80"
     depends_on:
       - backend
     restart: unless-stopped
