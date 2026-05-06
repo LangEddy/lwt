@@ -4,6 +4,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       SUPABASE_URL: ${SUPABASE_URL}
+      SKIP_MIGRATIONS: ${SKIP_MIGRATIONS:-true}
       PORT: 3000
     restart: unless-stopped
     networks:

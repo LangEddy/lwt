@@ -1,6 +1,5 @@
 use axum::Router;
 use lwt_backend::{router::create_router, state::AppState};
-use sqlx::Connection;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -37,8 +36,10 @@ async fn main() -> anyhow::Result<()> {
     let disable_statement_cache = std::env::var("SQLX_DISABLE_STATEMENT_CACHE")
         .ok()
         .map(|value| {
-            let value = value.trim().to_ascii_lowercase();
-            matches!(value.as_str(), "1" | "true" | "yes" | "on")
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
         })
         .unwrap_or_else(|| {
             database_url.contains("pooler.supabase.com")
@@ -55,19 +56,22 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = PgPoolOptions::new().connect_with(connect_options).await?;
 
-    // Migrations must run on a direct (non-pooler) connection because SQLx uses
-    // prepared statements internally and transaction-mode poolers (PgBouncer /
-    // Supabase pooler) cannot share prepared statements across backend connections.
-    // DATABASE_MIGRATE_URL should point to the direct Postgres connection
-    // (port 5432). Falls back to DATABASE_URL when not set (fine for local dev).
-    let migrate_url = std::env::var("DATABASE_MIGRATE_URL").unwrap_or_else(|_| {
-        tracing::warn!("DATABASE_MIGRATE_URL not set; using DATABASE_URL for migrations (may fail through a pooler)");
-        database_url.clone()
-    });
-    let mut migrate_conn = sqlx::postgres::PgConnection::connect(&migrate_url).await?;
-    sqlx::migrate!("./migrations")
-        .run(&mut migrate_conn)
-        .await?;
+    let skip_migrations = std::env::var("SKIP_MIGRATIONS")
+        .ok()
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false);
+
+    if skip_migrations {
+        tracing::info!("SKIP_MIGRATIONS=true — skipping database migrations");
+    } else {
+        sqlx::migrate!("./migrations").run(&pool).await?;
+        tracing::info!("Migrations applied successfully");
+    }
 
     let state = AppState::new(pool, jwks, supabase_url);
     let app: Router = create_router(state);
