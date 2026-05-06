@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # deploy.sh — Run on the VPS (srv159) to deploy LWT
-# Images are built locally and pushed to ghcr.io — no building happens here.
+# Images are built by GitHub Actions and pushed to ghcr.io — no building here.
 # Usage: bash deploy.sh
 set -euo pipefail
 
 APP_DIR="/opt/lwt"
 COMPOSE_FILE="docker-compose.prod.yml"
-REGISTRY="ghcr.io/YOUR_GITHUB_USER"
 
 # ─── 1. Install Docker (skip if already installed) ───────────────────────────
 if ! command -v docker &>/dev/null; then
@@ -18,41 +17,41 @@ else
 fi
 
 # ─── 2. Log in to ghcr.io ────────────────────────────────────────────────────
-# Requires GITHUB_TOKEN env var set to a PAT with read:packages scope.
-# On first run: export GITHUB_TOKEN=ghp_xxx  before calling this script.
+# Requires GITHUB_TOKEN env var (PAT with read:packages) on first run,
+# or make the packages public in GitHub settings (then no token needed).
 if [ -n "${GITHUB_TOKEN:-}" ]; then
-  echo "[2/4] Logging in to ghcr.io..."
-  echo "$GITHUB_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
+  GITHUB_USER_VAR=$(grep '^GITHUB_USER=' "$APP_DIR/.env" | cut -d= -f2)
+  echo "[2/4] Logging in to ghcr.io as ${GITHUB_USER_VAR}..."
+  echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_USER_VAR" --password-stdin
 else
-  echo "[2/4] GITHUB_TOKEN not set — assuming already logged in to ghcr.io"
+  echo "[2/4] GITHUB_TOKEN not set — assuming ghcr.io packages are public or already logged in"
 fi
 
-# ─── 3. Get compose file + .env ──────────────────────────────────────────────
-echo "[3/4] Updating files..."
+# ─── 3. Check required files ─────────────────────────────────────────────────
+echo "[3/4] Checking files in $APP_DIR..."
 mkdir -p "$APP_DIR"
 cd "$APP_DIR"
 
-# Copy docker-compose.prod.yml here if not already present
-# (or clone/scp it manually the first time)
 if [ ! -f "$COMPOSE_FILE" ]; then
   echo "ERROR: $APP_DIR/$COMPOSE_FILE not found."
-  echo "Copy docker-compose.prod.yml and .env to $APP_DIR first, e.g.:"
-  echo "  scp -P 10159 docker-compose.prod.yml .env root@srv159.mikr.us:/opt/lwt/"
+  echo "Copy it to the VPS first:"
+  echo "  scp -P 10159 docker-compose.prod.yml root@srv159.mikr.us:/opt/lwt/"
   exit 1
 fi
 
 if [ ! -f .env ]; then
   echo "ERROR: .env not found in $APP_DIR."
-  echo "Copy .env.prod.example → .env and fill in your Supabase credentials."
+  echo "Copy .env.prod.example → .env, fill in credentials, and scp it:"
+  echo "  scp -P 10159 .env root@srv159.mikr.us:/opt/lwt/"
   exit 1
 fi
 
 # ─── 4. Pull latest images & restart ─────────────────────────────────────────
 echo "[4/4] Pulling images and restarting..."
-REGISTRY="$REGISTRY" docker compose -f "$COMPOSE_FILE" pull
-REGISTRY="$REGISTRY" docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+docker compose -f "$COMPOSE_FILE" pull
+docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
-# Clean up old dangling images to save disk space
+# Clean up dangling images to save disk space
 docker image prune -f
 
 echo ""
