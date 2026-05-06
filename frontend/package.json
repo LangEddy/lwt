@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:wasm": "wasm-pack build --target web --out-dir src/wasm/tokenizer ../tokenizer",
+    "build:wasm": "wasm-pack build --target web --out-dir ../frontend/src/wasm/tokenizer ../tokenizer",
     "lint": "eslint .",
     "preview": "vite preview"
   },
