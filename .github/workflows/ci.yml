@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
@@ -85,6 +83,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Cache Rust dependencies for WASM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            tokenizer/target
+          key: ${{ runner.os }}-wasm-${{ hashFiles('tokenizer/Cargo.toml') }}
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -94,6 +108,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install wasm-pack
+        run: |
+          if ! command -v wasm-pack >/dev/null 2>&1; then
+            cargo install wasm-pack --locked
+          fi
+
+      - name: Build WASM tokenizer
+        run: npm run build:wasm
 
       - name: Lint
         run: npm run lint
