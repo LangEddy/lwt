@@ -23,3 +23,7 @@ dotenvy = "0.15"
 
 [dev-dependencies]
 tokio-test = "0.4"
+rsa = "0.9"
+rand = "0.8"
+base64 = "0.22"
+http-body-util = "0.1"

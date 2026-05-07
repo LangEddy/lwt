@@ -216,3 +216,91 @@ pub async fn update_settings(
 
     Ok(Json(settings))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_or_whitespace_tts_voice_is_accepted() {
+        assert!(validate_tts_voice("").is_ok());
+        assert!(validate_tts_voice("   ").is_ok());
+    }
+
+    #[test]
+    fn long_tts_voice_is_rejected() {
+        let s = "x".repeat(256);
+        assert!(matches!(
+            validate_tts_voice(&s),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn tts_voice_with_control_char_is_rejected() {
+        assert!(matches!(
+            validate_tts_voice("foo\nbar"),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            validate_tts_voice("foo\u{0007}bar"),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn normal_tts_voice_is_accepted() {
+        assert!(validate_tts_voice("Google US English").is_ok());
+        assert!(validate_tts_voice("zh-CN-XiaoxiaoNeural").is_ok());
+    }
+
+    #[test]
+    fn empty_or_whitespace_dictionary_url_is_accepted() {
+        assert!(validate_dictionary_url("").is_ok());
+        assert!(validate_dictionary_url("   ").is_ok());
+    }
+
+    #[test]
+    fn dictionary_url_must_start_with_http_or_https() {
+        assert!(matches!(
+            validate_dictionary_url("ftp://example.com/{word}"),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            validate_dictionary_url("example.com/{word}"),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn dictionary_url_must_contain_word_placeholder() {
+        assert!(matches!(
+            validate_dictionary_url("https://example.com/lookup"),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn dictionary_url_too_long_is_rejected() {
+        let s = format!("https://example.com/{}{{word}}", "a".repeat(2048));
+        assert!(matches!(
+            validate_dictionary_url(&s),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn valid_dictionary_url_is_accepted() {
+        assert!(validate_dictionary_url("https://dict.example.com/?q={word}").is_ok());
+        assert!(validate_dictionary_url("http://example.com/{word}").is_ok());
+    }
+
+    #[test]
+    fn dictionary_url_invalid_after_substitution_is_rejected() {
+        // After replacing {word} with "example", "https:// /example" doesn't parse.
+        assert!(matches!(
+            validate_dictionary_url("https:// /{word}"),
+            Err(AppError::Validation(_))
+        ));
+    }
+}

@@ -210,3 +210,81 @@ pub async fn submit_answer(
         sr,
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::sm2;
+
+    #[test]
+    fn rating_again_resets_progress() {
+        let (interval, reps, ef) = sm2(15, 5, 2.5, 0);
+        assert_eq!(interval, 1);
+        assert_eq!(reps, 0);
+        assert!(ef < 2.5);
+    }
+
+    #[test]
+    fn first_good_review_sets_one_day_interval() {
+        let (interval, reps, _) = sm2(1, 0, 2.5, 2);
+        assert_eq!(interval, 1);
+        assert_eq!(reps, 1);
+    }
+
+    #[test]
+    fn second_good_review_sets_six_day_interval() {
+        let (interval, reps, _) = sm2(1, 1, 2.5, 2);
+        assert_eq!(interval, 6);
+        assert_eq!(reps, 2);
+    }
+
+    #[test]
+    fn third_good_review_multiplies_by_ease_factor() {
+        let (interval, reps, _) = sm2(6, 2, 2.5, 2);
+        assert_eq!(interval, 15); // 6 * 2.5 rounded
+        assert_eq!(reps, 3);
+    }
+
+    #[test]
+    fn ease_factor_never_drops_below_one_three() {
+        let mut ef = 2.5;
+        for _ in 0..100 {
+            let (_, _, new_ef) = sm2(1, 0, ef, 0);
+            ef = new_ef;
+        }
+        assert!(ef >= 1.3 - f32::EPSILON);
+    }
+
+    #[test]
+    fn easy_rating_increases_ease_factor() {
+        let (_, _, ef) = sm2(1, 1, 2.5, 3);
+        assert!(ef > 2.5);
+    }
+
+    #[test]
+    fn hard_rating_decreases_ease_factor() {
+        let (_, _, ef) = sm2(1, 1, 2.5, 1);
+        assert!(ef < 2.5);
+    }
+
+    #[test]
+    fn good_rating_keeps_ease_factor_stable() {
+        let (_, _, ef) = sm2(1, 1, 2.5, 2);
+        assert!((ef - 2.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn out_of_range_rating_falls_back_to_good() {
+        let unknown = sm2(1, 1, 2.5, 99);
+        let good = sm2(1, 1, 2.5, 2);
+        assert_eq!(unknown.0, good.0);
+        assert_eq!(unknown.1, good.1);
+        assert!((unknown.2 - good.2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn hard_rating_does_not_reset_repetitions() {
+        // Quality 3 (Hard) is still >= 3, so progress continues.
+        let (_, reps, _) = sm2(6, 2, 2.5, 1);
+        assert_eq!(reps, 3);
+    }
+}

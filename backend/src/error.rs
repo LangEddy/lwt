@@ -42,3 +42,60 @@ impl IntoResponse for AppError {
         (status, body).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+
+    async fn body_json(resp: Response) -> serde_json::Value {
+        let bytes = to_bytes(resp.into_body(), 4096).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn unauthorized_maps_to_401() {
+        let resp = AppError::Unauthorized.into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = body_json(resp).await;
+        assert!(body["error"].as_str().unwrap().contains("Authentication"));
+    }
+
+    #[tokio::test]
+    async fn forbidden_maps_to_403() {
+        let resp = AppError::Forbidden.into_response();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn not_found_maps_to_404() {
+        let resp = AppError::NotFound.into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn validation_error_returns_400_with_user_message() {
+        let resp = AppError::Validation("level out of range".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = body_json(resp).await;
+        assert_eq!(body["error"].as_str().unwrap(), "level out of range");
+    }
+
+    #[tokio::test]
+    async fn database_error_does_not_leak_details() {
+        let resp = AppError::Database(sqlx::Error::RowNotFound).into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let msg = body_json(resp).await["error"].as_str().unwrap().to_string();
+        let lower = msg.to_lowercase();
+        assert!(!lower.contains("rownotfound"));
+        assert!(!lower.contains("sqlx"));
+    }
+
+    #[tokio::test]
+    async fn internal_error_does_not_leak_details() {
+        let resp = AppError::Internal("connection string with secret".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let msg = body_json(resp).await["error"].as_str().unwrap().to_string();
+        assert!(!msg.contains("secret"));
+    }
+}
