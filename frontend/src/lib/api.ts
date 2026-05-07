@@ -1,33 +1,7 @@
 import { supabase } from "./supabase";
+import { rewriteLocalhostHost } from "./devHost";
 
-function resolveApiBase() {
-  const configuredBase = import.meta.env.VITE_API_URL || "";
-
-  if (!configuredBase || typeof window === "undefined") {
-    return configuredBase;
-  }
-
-  try {
-    const configuredUrl = new URL(configuredBase);
-    const currentHost = window.location.hostname;
-    const isConfiguredLocalhost =
-      configuredUrl.hostname === "localhost" ||
-      configuredUrl.hostname === "127.0.0.1";
-    const isCurrentLocalhost =
-      currentHost === "localhost" || currentHost === "127.0.0.1";
-
-    if (isConfiguredLocalhost && !isCurrentLocalhost) {
-      configuredUrl.hostname = currentHost;
-      return configuredUrl.toString().replace(/\/$/, "");
-    }
-
-    return configuredBase;
-  } catch {
-    return configuredBase;
-  }
-}
-
-const API_BASE = resolveApiBase();
+const API_BASE = rewriteLocalhostHost(import.meta.env.VITE_API_URL || "");
 
 class ApiError extends Error {
   status: number;

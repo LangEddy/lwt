@@ -57,10 +57,23 @@ function calculateInterval(
 }
 
 export default function LearnPage() {
-  const { activeCards, totalCards, loading, fetchDue, submitAnswer } =
-    useReviews();
+  const {
+    activeCards,
+    totalCards,
+    loading,
+    fetchDue,
+    submitAnswer,
+    updateCardTranslation,
+    removeCardExample,
+  } = useReviews();
   const [showAnswer, setShowAnswer] = useState(false);
-  const [answerNote, setAnswerNote] = useState("");
+  const [translationDraft, setTranslationDraft] = useState("");
+  const [isEditingTranslation, setIsEditingTranslation] = useState(false);
+  const [isSavingTranslation, setIsSavingTranslation] = useState(false);
+  const [translationError, setTranslationError] = useState<string | null>(null);
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const [isRemovingExample, setIsRemovingExample] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
   const [sessionStats, setSessionStats] = useState({
     again: 0,
@@ -74,12 +87,98 @@ export default function LearnPage() {
   }, [fetchDue]);
 
   const current = activeCards[0];
+  const currentTranslation = current?.translation?.trim() ?? "";
+  const hasTranslation = currentTranslation.length > 0;
   const progress =
     totalCards > 0 ? (totalCards - activeCards.length) / totalCards : 0;
 
   const handleShowAnswer = () => {
-    setAnswerNote(current?.example_note ?? "");
+    const initialTranslation = current?.translation?.trim() ?? "";
+    setTranslationDraft(initialTranslation);
+    setIsEditingTranslation(initialTranslation.length === 0);
+    setTranslationError(null);
     setShowAnswer(true);
+  };
+
+  const handleEditTranslation = () => {
+    if (!current) return;
+    setTranslationDraft(current.translation?.trim() ?? "");
+    setIsEditingTranslation(true);
+    setTranslationError(null);
+  };
+
+  const handleCancelTranslationEdit = () => {
+    setTranslationDraft(currentTranslation);
+    setIsEditingTranslation(false);
+    setTranslationError(null);
+  };
+
+  const handleSaveTranslation = async () => {
+    if (!current) return;
+
+    const nextTranslation = translationDraft.trim();
+    if (!nextTranslation) {
+      setTranslationError("Translation cannot be empty.");
+      return;
+    }
+
+    try {
+      setIsSavingTranslation(true);
+      setTranslationError(null);
+      const savedTranslation = await updateCardTranslation(
+        current.example_id,
+        nextTranslation,
+      );
+      setTranslationDraft(savedTranslation ?? nextTranslation);
+      setIsEditingTranslation(false);
+    } catch (error) {
+      setTranslationError(
+        error instanceof Error ? error.message : "Failed to save translation.",
+      );
+    } finally {
+      setIsSavingTranslation(false);
+    }
+  };
+
+  const handleOpenRemoveDialog = () => {
+    setRemoveError(null);
+    setShowRemoveDialog(true);
+  };
+
+  const handleCancelRemoveDialog = () => {
+    if (isRemovingExample) return;
+    setShowRemoveDialog(false);
+    setRemoveError(null);
+  };
+
+  const handleConfirmRemoveExample = async () => {
+    if (!current) {
+      setShowRemoveDialog(false);
+      return;
+    }
+
+    try {
+      setIsRemovingExample(true);
+      setRemoveError(null);
+      await removeCardExample(current.example_id);
+      setShowRemoveDialog(false);
+      setShowAnswer(false);
+      setTranslationDraft("");
+      setIsEditingTranslation(false);
+      setTranslationError(null);
+
+      if (activeCards.length <= 1) {
+        setFinished(true);
+      }
+    } catch (error) {
+      setRemoveError(
+        error instanceof Error
+          ? error.message
+          : "Failed to remove this sentence.",
+      );
+    } finally {
+      setIsRemovingExample(false);
+    }
   };
 
   const handleAnswer = async (rating: number) => {
@@ -93,7 +192,9 @@ export default function LearnPage() {
       easy: prev.easy + (rating === 3 ? 1 : 0),
     }));
     setShowAnswer(false);
-    setAnswerNote("");
+    setTranslationDraft("");
+    setIsEditingTranslation(false);
+    setTranslationError(null);
     if (activeCards.length <= 1) {
       setFinished(true);
     }
@@ -101,7 +202,9 @@ export default function LearnPage() {
 
   const handleRestart = () => {
     setShowAnswer(false);
-    setAnswerNote("");
+    setTranslationDraft("");
+    setIsEditingTranslation(false);
+    setTranslationError(null);
     setFinished(false);
     setSessionStats({ again: 0, hard: 0, good: 0, easy: 0 });
     fetchDue();
@@ -195,14 +298,20 @@ export default function LearnPage() {
 
       {/* Card */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="max-w-xl mx-auto flex flex-col h-full justify-center">
+        <div className="max-w-xl mx-auto flex flex-col h-full justify-start md:justify-center">
           {/* Card */}
           <div
             className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-[16px] p-6 mb-6 min-h-[180px] flex flex-col justify-center"
             dir={current.language_direction}
           >
-            <div className="text-[12px] font-semibold text-[var(--color-text3)] uppercase tracking-[0.06em] mb-4">
-              Translate this sentence
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="text-[12px] font-semibold text-[var(--color-text3)] uppercase tracking-[0.06em]">
+                Translate this sentence
+              </div>
+              <div className="shrink-0 text-[11px] font-semibold text-[var(--color-text2)] bg-[var(--color-bg)] border border-[var(--color-border)] rounded-full px-2.5 py-1">
+                {current.language_code.toUpperCase()} ·{" "}
+                {current.language_direction.toUpperCase()}
+              </div>
             </div>
 
             {/* Target word highlight in sentence */}
@@ -239,29 +348,78 @@ export default function LearnPage() {
               <div className="animate-fade-in mt-4">
                 <div className="border-t border-[var(--color-border)] pt-4" />
 
-                {current.translation && (
-                  <div className="text-[16px] text-[var(--color-text2)] mb-3">
-                    {current.translation}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[12px] font-semibold text-[var(--color-text3)] uppercase tracking-[0.06em]">
+                    Translation
+                  </div>
+                  {hasTranslation && !isEditingTranslation && (
+                    <button
+                      onClick={handleEditTranslation}
+                      className="text-[11px] font-semibold text-[var(--color-text2)] hover:text-[var(--color-text)] transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {isEditingTranslation || !hasTranslation ? (
+                  <div>
+                    <textarea
+                      value={translationDraft}
+                      onChange={(event) => {
+                        setTranslationDraft(event.target.value);
+                        if (translationError) {
+                          setTranslationError(null);
+                        }
+                      }}
+                      placeholder="Add translation..."
+                      rows={3}
+                      className="w-full px-3 py-2 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-bg)] text-[14px] text-[var(--color-text)] placeholder:text-[var(--color-text3)] outline-none resize-none"
+                    />
+
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        onClick={handleSaveTranslation}
+                        disabled={
+                          isSavingTranslation ||
+                          translationDraft.trim().length === 0
+                        }
+                        className="px-3 py-1.5 rounded-[8px] text-[12px] font-semibold bg-[var(--color-text)] text-[var(--color-surface)] hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isSavingTranslation ? "Saving..." : "Save translation"}
+                      </button>
+
+                      {hasTranslation && (
+                        <button
+                          onClick={handleCancelTranslationEdit}
+                          disabled={isSavingTranslation}
+                          className="px-3 py-1.5 rounded-[8px] text-[12px] font-semibold border border-[var(--color-border)] text-[var(--color-text2)] hover:text-[var(--color-text)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+
+                    {translationError && (
+                      <p className="text-[12px] text-[var(--color-red)] mt-2">
+                        {translationError}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[16px] text-[var(--color-text2)] mb-1">
+                    {currentTranslation}
                   </div>
                 )}
 
-                <div className="text-[12px] font-semibold text-[var(--color-text3)] uppercase tracking-[0.06em] mb-2">
-                  Your note
+                <div className="border-t border-[var(--color-border)] mt-4 pt-3">
+                  <button
+                    onClick={handleOpenRemoveDialog}
+                    className="text-[12px] font-semibold text-[var(--color-red)] hover:opacity-80 transition-opacity"
+                  >
+                    Stop repeating this sentence
+                  </button>
                 </div>
-
-                <div className="text-[15px] text-[var(--color-text)] mb-3">
-                  {current.word_note ||
-                    current.example_note ||
-                    "No note added yet"}
-                </div>
-
-                <textarea
-                  value={answerNote}
-                  onChange={(event) => setAnswerNote(event.target.value)}
-                  placeholder="Update your note..."
-                  rows={2}
-                  className="w-full px-3 py-2 rounded-[10px] border border-[var(--color-border)] bg-[var(--color-bg)] text-[14px] text-[var(--color-text)] placeholder:text-[var(--color-text3)] outline-none resize-none"
-                />
               </div>
             )}
           </div>
@@ -317,6 +475,43 @@ export default function LearnPage() {
           )}
         </div>
       </div>
+
+      {showRemoveDialog && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
+          <div className="w-full max-w-sm rounded-[14px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-lg">
+            <h3 className="text-[16px] font-bold text-[var(--color-text)] mb-2">
+              Remove this sentence from reviews?
+            </h3>
+            <p className="text-[13px] text-[var(--color-text2)] leading-[1.5]">
+              This will delete the example sentence and stop showing it in
+              spaced repetition. This action cannot be undone.
+            </p>
+
+            {removeError && (
+              <p className="text-[12px] text-[var(--color-red)] mt-3">
+                {removeError}
+              </p>
+            )}
+
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={handleCancelRemoveDialog}
+                disabled={isRemovingExample}
+                className="px-3 py-1.5 rounded-[8px] text-[12px] font-semibold border border-[var(--color-border)] text-[var(--color-text2)] hover:text-[var(--color-text)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmRemoveExample}
+                disabled={isRemovingExample}
+                className="px-3 py-1.5 rounded-[8px] text-[12px] font-semibold bg-[var(--color-red)] text-white hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isRemovingExample ? "Removing..." : "Delete sentence"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

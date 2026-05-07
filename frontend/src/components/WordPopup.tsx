@@ -113,22 +113,23 @@ export default function WordPopup({
     setShowExampleForm(true);
   };
 
-  const handleUpdateExample = async () => {
+  const commitEditingExample = async () => {
     if (!editingExampleId || !exampleSentence.trim()) return;
     await updateExample(editingExampleId, {
       sentence: exampleSentence.trim(),
       translation: exampleTranslation.trim() || undefined,
       note: exampleNote.trim() || undefined,
     });
-    setEditingExampleId(null);
-    setExampleSentence("");
-    setExampleTranslation("");
-    setExampleNote("");
+  };
+
+  const handleUpdateExample = async () => {
+    await commitEditingExample();
+    cancelExampleForm();
   };
 
   const getPendingExample = () => {
     if (!showExampleForm || editingExampleId) return undefined;
-    const sentence = (exampleSentence || sourceSentence).trim();
+    const sentence = exampleSentence.trim();
     if (!sentence) return undefined;
     return {
       sentence,
@@ -141,6 +142,7 @@ export default function WordPopup({
     if (isSaving) return;
     setIsSaving(true);
     try {
+      await commitEditingExample();
       await onSave(level, note, false, getPendingExample());
       cancelExampleForm();
     } finally {
@@ -357,7 +359,7 @@ export default function WordPopup({
             <div className="flex items-center justify-between py-2">
               <label className="text-[13px] font-semibold text-[var(--color-text2)] flex items-center gap-1.5">
                 <MessageSquare size={14} />
-                Examples
+                Learning sentences
                 <span className="text-[11px] text-[var(--color-text3)] font-normal">
                   ({visibleExampleCount})
                 </span>
