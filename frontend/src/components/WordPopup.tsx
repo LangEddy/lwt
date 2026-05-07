@@ -26,7 +26,16 @@ interface WordPopupProps {
   wordText: string;
   sourceSentence: string;
   existingWord?: Word;
-  onSave: (level: WordLevel, note: string, isPhrase: boolean) => void;
+  onSave: (
+    level: WordLevel,
+    note: string,
+    isPhrase: boolean,
+    pendingExample?: {
+      sentence: string;
+      translation?: string;
+      note?: string;
+    },
+  ) => void | Promise<void>;
   onDelete: () => void;
   onClose: () => void;
   onExpandLeft?: () => void;
@@ -70,12 +79,12 @@ export default function WordPopup({
   const [exampleTranslation, setExampleTranslation] = useState("");
   const [exampleNote, setExampleNote] = useState("");
   const [editingExampleId, setEditingExampleId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const {
     examples,
     loading: examplesLoading,
     fetchExamples,
-    createExample,
     updateExample,
     deleteExample,
   } = useExamples(existingWord?.id);
@@ -96,18 +105,12 @@ export default function WordPopup({
     setExampleSentence(sourceSentence);
   }, [showExampleForm, editingExampleId, sourceSentence]);
 
-  const handleAddExample = async () => {
-    const sentence = sourceSentence.trim();
-    if (!sentence) return;
-    await createExample({
-      sentence,
-      translation: exampleTranslation.trim() || undefined,
-      note: exampleNote.trim() || undefined,
-    });
-    setExampleSentence("");
+  const startAddExample = () => {
+    setEditingExampleId(null);
+    setExampleSentence(sourceSentence);
     setExampleTranslation("");
     setExampleNote("");
-    setShowExampleForm(false);
+    setShowExampleForm(true);
   };
 
   const handleUpdateExample = async () => {
@@ -121,6 +124,28 @@ export default function WordPopup({
     setExampleSentence("");
     setExampleTranslation("");
     setExampleNote("");
+  };
+
+  const getPendingExample = () => {
+    if (!showExampleForm || editingExampleId) return undefined;
+    const sentence = (exampleSentence || sourceSentence).trim();
+    if (!sentence) return undefined;
+    return {
+      sentence,
+      translation: exampleTranslation.trim() || undefined,
+      note: exampleNote.trim() || undefined,
+    };
+  };
+
+  const handleSaveAll = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await onSave(level, note, false, getPendingExample());
+      cancelExampleForm();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const startEditExample = (ex: {
@@ -143,6 +168,12 @@ export default function WordPopup({
     setExampleTranslation("");
     setExampleNote("");
   };
+
+  const visibleExampleCount = existingWord
+    ? examples.length
+    : showExampleForm
+      ? 1
+      : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -322,60 +353,54 @@ export default function WordPopup({
           </div>
 
           {/* Examples */}
-          {existingWord && (
-            <div className="px-4 pb-3 border-t border-[var(--color-border)]">
-              <div className="flex items-center justify-between py-2">
-                <label className="text-[13px] font-semibold text-[var(--color-text2)] flex items-center gap-1.5">
-                  <MessageSquare size={14} />
-                  Examples
-                  <span className="text-[11px] text-[var(--color-text3)] font-normal">
-                    ({examples.length})
-                  </span>
-                </label>
-                {!showExampleForm && (
-                  <button
-                    onClick={() => {
-                      setEditingExampleId(null);
-                      setExampleSentence(sourceSentence);
-                      setExampleTranslation("");
-                      setExampleNote("");
-                      setShowExampleForm(true);
-                    }}
-                    className="flex items-center gap-1 px-2 py-1 rounded-[8px] text-[12px] font-semibold bg-[var(--color-bg2)] text-[var(--color-text2)] hover:bg-[var(--color-bg3)] transition-colors"
-                  >
-                    <Plus size={13} />
-                    Add
-                  </button>
-                )}
-              </div>
-
-              {examplesLoading && (
-                <div className="text-[12px] text-[var(--color-text3)] py-2">
-                  Loading…
-                </div>
+          <div className="px-4 pb-3 border-t border-[var(--color-border)]">
+            <div className="flex items-center justify-between py-2">
+              <label className="text-[13px] font-semibold text-[var(--color-text2)] flex items-center gap-1.5">
+                <MessageSquare size={14} />
+                Examples
+                <span className="text-[11px] text-[var(--color-text3)] font-normal">
+                  ({visibleExampleCount})
+                </span>
+              </label>
+              {!showExampleForm && (
+                <button
+                  onClick={startAddExample}
+                  className="flex items-center gap-1 px-2 py-1 rounded-[8px] text-[12px] font-semibold bg-[var(--color-bg2)] text-[var(--color-text2)] hover:bg-[var(--color-bg3)] transition-colors"
+                >
+                  <Plus size={13} />
+                  Add
+                </button>
               )}
+            </div>
 
-              {showExampleForm && (
-                <div className="bg-[var(--color-bg)] rounded-[10px] p-3 mb-2 border border-[var(--color-border)]">
-                  <div className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[14px] text-[var(--color-text2)] leading-relaxed mb-2">
-                    {exampleSentence ||
-                      sourceSentence ||
-                      "No sentence context available."}
-                  </div>
-                  <textarea
-                    value={exampleTranslation}
-                    onChange={(e) => setExampleTranslation(e.target.value)}
-                    placeholder="Translation (optional)..."
-                    rows={1}
-                    className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[14px] outline-none focus:border-[var(--color-text)] transition-colors resize-none mb-2"
-                  />
-                  <textarea
-                    value={exampleNote}
-                    onChange={(e) => setExampleNote(e.target.value)}
-                    placeholder="Note (optional)..."
-                    rows={1}
-                    className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[14px] outline-none focus:border-[var(--color-text)] transition-colors resize-none mb-2"
-                  />
+            {examplesLoading && (
+              <div className="text-[12px] text-[var(--color-text3)] py-2">
+                Loading…
+              </div>
+            )}
+
+            {showExampleForm && (
+              <div className="bg-[var(--color-bg)] rounded-[10px] p-3 mb-2 border border-[var(--color-border)]">
+                <div className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[14px] text-[var(--color-text2)] leading-relaxed mb-2">
+                  {exampleSentence ||
+                    sourceSentence ||
+                    "No sentence context available."}
+                </div>
+                <textarea
+                  value={exampleTranslation}
+                  onChange={(e) => setExampleTranslation(e.target.value)}
+                  placeholder="Translation (optional)..."
+                  rows={1}
+                  className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[14px] outline-none focus:border-[var(--color-text)] transition-colors resize-none mb-2"
+                />
+                <textarea
+                  value={exampleNote}
+                  onChange={(e) => setExampleNote(e.target.value)}
+                  placeholder="Note (optional)..."
+                  rows={1}
+                  className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[14px] outline-none focus:border-[var(--color-text)] transition-colors resize-none mb-2"
+                />
+                {editingExampleId ? (
                   <div className="flex items-center gap-2 justify-end">
                     <button
                       onClick={cancelExampleForm}
@@ -384,20 +409,30 @@ export default function WordPopup({
                       Cancel
                     </button>
                     <button
-                      onClick={
-                        editingExampleId
-                          ? handleUpdateExample
-                          : handleAddExample
-                      }
+                      onClick={handleUpdateExample}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-[8px] text-[12px] font-semibold bg-[var(--color-text)] text-[var(--color-surface)] hover:opacity-90 transition-opacity"
                     >
                       <Check size={13} />
-                      {editingExampleId ? "Update" : "Save"}
+                      Update
                     </button>
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-[var(--color-text3)]">
+                      This example will be saved with the main Save button.
+                    </p>
+                    <button
+                      onClick={cancelExampleForm}
+                      className="px-3 py-1.5 rounded-[8px] text-[12px] font-semibold text-[var(--color-text2)] hover:bg-[var(--color-bg2)] transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
+            {existingWord && (
               <div className="flex flex-col gap-2">
                 {examples.map((ex) => (
                   <div
@@ -449,8 +484,8 @@ export default function WordPopup({
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Actions */}
@@ -476,11 +511,12 @@ export default function WordPopup({
             Cancel
           </button>
           <button
-            onClick={() => onSave(level, note, false)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-semibold bg-[var(--color-text)] text-[var(--color-surface)] hover:opacity-90 transition-opacity"
+            onClick={handleSaveAll}
+            disabled={isSaving}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-semibold bg-[var(--color-text)] text-[var(--color-surface)] hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
           >
             <Check size={15} />
-            Save
+            {isSaving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>

@@ -223,6 +223,11 @@ export default function ReaderPage() {
     level: WordLevel,
     note: string,
     isPhrase: boolean,
+    pendingExample?: {
+      sentence: string;
+      translation?: string;
+      note?: string;
+    },
   ) => {
     if (!text || !selectedRange) return;
 
@@ -232,10 +237,12 @@ export default function ReaderPage() {
       .map((t) => t.value)
       .join(" ");
 
+    let savedWord: Word;
+
     if (selectedWord) {
-      await updateWord(selectedWord.id, { level, note });
+      savedWord = await updateWord(selectedWord.id, { level, note });
     } else {
-      await createWord({
+      savedWord = await createWord({
         language_id: text.language_id,
         text_id: text.id,
         word: wordText,
@@ -244,6 +251,16 @@ export default function ReaderPage() {
         note,
       });
     }
+
+    const sentence = pendingExample?.sentence?.trim();
+    if (sentence) {
+      await api.post(`/api/words/${savedWord.id}/examples`, {
+        sentence,
+        translation: pendingExample?.translation?.trim() || undefined,
+        note: pendingExample?.note?.trim() || undefined,
+      });
+    }
+
     setPopupOpen(false);
     setSelectedRange(null);
   };

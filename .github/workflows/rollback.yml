@@ -1,0 +1,66 @@
+name: Rollback migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Migration version to roll back (timestamp prefix, e.g. 20260506000000)"
+        required: true
+        type: string
+      confirm:
+        description: 'Type "CONFIRM" to acknowledge this is a destructive production change'
+        required: true
+        type: string
+
+jobs:
+  rollback:
+    name: Apply rollback SQL
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "CONFIRM" ]; then
+            echo "Confirmation text did not match. Aborting." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Locate rollback file
+        id: locate
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          matches=(supabase/rollback/${{ inputs.version }}_*.sql)
+          if [ ${#matches[@]} -eq 0 ]; then
+            echo "No rollback file found for version ${{ inputs.version }}" >&2
+            echo "Expected: supabase/rollback/${{ inputs.version }}_<name>.sql" >&2
+            exit 1
+          fi
+          if [ ${#matches[@]} -gt 1 ]; then
+            echo "Multiple rollback files matched ${{ inputs.version }}: ${matches[*]}" >&2
+            exit 1
+          fi
+          echo "file=${matches[0]}" >> "$GITHUB_OUTPUT"
+          echo "Selected ${matches[0]}"
+
+      - name: Install psql
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Apply rollback SQL and update migrations metadata
+        env:
+          # Direct connection (port 5432 of db.<ref>.supabase.co), NOT the
+          # pooler. Same secret used by the forward migration job.
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+          ROLLBACK_FILE: ${{ steps.locate.outputs.file }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # Run rollback SQL and migrations-table update in a single transaction
+          # so a failure in either rolls everything back.
+          psql "$PGURL" --single-transaction --set ON_ERROR_STOP=1 \
+            -f "$ROLLBACK_FILE" \
+            -c "DELETE FROM supabase_migrations.schema_migrations WHERE version = '$VERSION';"

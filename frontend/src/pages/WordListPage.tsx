@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import WordPopup from "../components/WordPopup";
 import { useLanguages } from "../hooks/useLanguages";
 import { useWords } from "../hooks/useWords";
+import { api } from "../lib/api";
 import type { Word, WordLevel } from "../types";
 
 const LEVEL_FILTER: { value: WordLevel | null; label: string }[] = [
@@ -48,9 +49,28 @@ export default function WordListPage() {
     return result;
   }, [words, levelFilter, search]);
 
-  const handleSave = async (level: WordLevel, note: string) => {
+  const handleSave = async (
+    level: WordLevel,
+    note: string,
+    _isPhrase: boolean,
+    pendingExample?: {
+      sentence: string;
+      translation?: string;
+      note?: string;
+    },
+  ) => {
     if (!selectedWord) return;
     await updateWord(selectedWord.id, { level, note });
+
+    const sentence = pendingExample?.sentence?.trim();
+    if (sentence) {
+      await api.post(`/api/words/${selectedWord.id}/examples`, {
+        sentence,
+        translation: pendingExample?.translation?.trim() || undefined,
+        note: pendingExample?.note?.trim() || undefined,
+      });
+    }
+
     setSelectedWord(null);
   };
 

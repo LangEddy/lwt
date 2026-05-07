@@ -1,8 +1,7 @@
 use axum::Router;
 use lwt_backend::{router::create_router, state::AppState};
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
-use std::str::FromStr;
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -31,47 +30,10 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     tracing::info!("Loaded {} JWK(s)", jwks.keys.len());
 
-    let mut connect_options = PgConnectOptions::from_str(&database_url)?;
-
-    let disable_statement_cache = std::env::var("SQLX_DISABLE_STATEMENT_CACHE")
-        .ok()
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or_else(|| {
-            database_url.contains("pooler.supabase.com")
-                || database_url.contains("pgbouncer")
-                || database_url.contains(":6543")
-        });
-
-    if disable_statement_cache {
-        tracing::warn!(
-            "Disabling SQLx statement cache for pooler-compatible PostgreSQL connections"
-        );
-        connect_options = connect_options.statement_cache_capacity(0);
-    }
-
-    let pool = PgPoolOptions::new().connect_with(connect_options).await?;
-
-    let skip_migrations = std::env::var("SKIP_MIGRATIONS")
-        .ok()
-        .map(|v| {
-            matches!(
-                v.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false);
-
-    if skip_migrations {
-        tracing::info!("SKIP_MIGRATIONS=true — skipping database migrations");
-    } else {
-        sqlx::migrate!("./migrations").run(&pool).await?;
-        tracing::info!("Migrations applied successfully");
-    }
+    // Schema is owned by Supabase CLI (`supabase db push` in CI). The app
+    // never runs migrations — point DATABASE_URL at the session pooler
+    // (port 5432) or a direct connection.
+    let pool = PgPoolOptions::new().connect(&database_url).await?;
 
     let state = AppState::new(pool, jwks, supabase_url);
     let app: Router = create_router(state);

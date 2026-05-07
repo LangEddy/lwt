@@ -32,5 +32,10 @@ npm-debug.log*
 # SQLx
 .sqlx/
 
+# Supabase CLI
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
 target
 notes.md
