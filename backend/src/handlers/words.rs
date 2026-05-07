@@ -157,10 +157,10 @@ pub async fn update_word(
         return Err(AppError::Forbidden);
     }
 
-    if let Some(level) = body.level {
-        if level < 1 || level > 5 {
-            return Err(AppError::Validation("level must be between 1 and 5".into()));
-        }
+    if let Some(level) = body.level
+        && !(1..=5).contains(&level)
+    {
+        return Err(AppError::Validation("level must be between 1 and 5".into()));
     }
 
     let word = sqlx::query_as::<_, Word>(
