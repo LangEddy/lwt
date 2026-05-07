@@ -351,6 +351,12 @@ export default function ReaderPage() {
   const handleOpenDictionary = (value: string) => {
     const url = buildUrl(value);
     if (!url) return;
+    // On touch devices, open in a new tab — the system back gesture stays
+    // predictable and many dictionaries block iframe embedding anyway.
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      window.open(url, "_blank", "noopener");
+      return;
+    }
     setDictionaryUrl(url);
   };
 

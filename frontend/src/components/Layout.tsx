@@ -5,6 +5,7 @@ import {
   List,
   LogOut,
   Menu,
+  MessageSquare,
   Settings2,
   User,
 } from "lucide-react";
@@ -49,6 +50,7 @@ export function Layout({ children }: { children: ReactNode }) {
     { id: "/texts", icon: BookOpen, label: "Texts" },
     { id: "/learn", icon: Brain, label: "Learn" },
     { id: "/words", icon: List, label: "Word List" },
+    { id: "/sentences", icon: MessageSquare, label: "Sentences" },
     { id: "/settings", icon: Settings2, label: "Settings" },
   ];
 

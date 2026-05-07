@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Path, State},
     Extension, Json,
+    extract::{Path, Query, State},
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,27 @@ pub struct Example {
     pub note: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, FromRow, Serialize)]
+pub struct SentenceItem {
+    pub id: Uuid,
+    pub word_id: Uuid,
+    pub word: String,
+    pub language_id: Uuid,
+    pub language_code: String,
+    pub sentence: String,
+    pub translation: Option<String>,
+    pub note: Option<String>,
+    pub next_review_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub repetitions: Option<i32>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListSentencesQuery {
+    pub language_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +83,74 @@ pub async fn list_examples(
     Ok(Json(examples))
 }
 
+pub async fn list_sentences(
+    State(state): State<AppState>,
+    Extension(claims): Extension<Claims>,
+    Query(query): Query<ListSentencesQuery>,
+) -> Result<Json<Vec<SentenceItem>>, AppError> {
+    let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+
+    let items = if let Some(language_id) = query.language_id {
+        sqlx::query_as::<_, SentenceItem>(
+            r#"
+            SELECT
+                e.id,
+                e.word_id,
+                w.word,
+                w.language_id,
+                l.code AS language_code,
+                e.sentence,
+                e.translation,
+                e.note,
+                sr.next_review_at,
+                sr.repetitions,
+                e.created_at,
+                e.updated_at
+            FROM examples e
+            JOIN words w ON e.word_id = w.id
+            JOIN languages l ON w.language_id = l.id
+            LEFT JOIN spaced_repetition sr ON sr.example_id = e.id
+            WHERE w.user_id = $1
+              AND w.language_id = $2
+            ORDER BY e.updated_at DESC, e.created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .bind(language_id)
+        .fetch_all(&state.pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, SentenceItem>(
+            r#"
+            SELECT
+                e.id,
+                e.word_id,
+                w.word,
+                w.language_id,
+                l.code AS language_code,
+                e.sentence,
+                e.translation,
+                e.note,
+                sr.next_review_at,
+                sr.repetitions,
+                e.created_at,
+                e.updated_at
+            FROM examples e
+            JOIN words w ON e.word_id = w.id
+            JOIN languages l ON w.language_id = l.id
+            LEFT JOIN spaced_repetition sr ON sr.example_id = e.id
+            WHERE w.user_id = $1
+            ORDER BY e.updated_at DESC, e.created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&state.pool)
+        .await?
+    };
+
+    Ok(Json(items))
+}
+
 pub async fn create_example(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -102,7 +191,7 @@ pub async fn update_example(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     let word_owner: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT w.user_id FROM examples e JOIN words w ON e.word_id = w.id WHERE e.id = $1"
+        "SELECT w.user_id FROM examples e JOIN words w ON e.word_id = w.id WHERE e.id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)
@@ -135,7 +224,7 @@ pub async fn delete_example(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     let word_owner: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT w.user_id FROM examples e JOIN words w ON e.word_id = w.id WHERE e.id = $1"
+        "SELECT w.user_id FROM examples e JOIN words w ON e.word_id = w.id WHERE e.id = $1",
     )
     .bind(id)
     .fetch_optional(&state.pool)

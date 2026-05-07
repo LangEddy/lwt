@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { UserLanguageSettings } from "../types";
 
@@ -8,52 +8,39 @@ interface UpdateLanguageSettingsPayload {
   is_favorite?: boolean;
 }
 
+const settingsKey = (languageId?: string) =>
+  ["language-settings", languageId ?? null] as const;
+
 export function useLanguageSettings(languageId?: string) {
-  const [settings, setSettings] = useState<UserLanguageSettings | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchSettings = useCallback(async () => {
-    if (!languageId) {
-      setSettings(null);
-      return;
-    }
+  const query = useQuery({
+    queryKey: settingsKey(languageId),
+    queryFn: () =>
+      api.get<UserLanguageSettings>(`/api/languages/${languageId}/settings`),
+    enabled: Boolean(languageId),
+  });
 
-    setLoading(true);
-    try {
-      const data = await api.get<UserLanguageSettings>(
-        `/api/languages/${languageId}/settings`,
-      );
-      setSettings(data);
-      setError(null);
-      return data;
-    } catch (err) {
-      setError((err as Error).message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [languageId]);
-
-  useEffect(() => {
-    fetchSettings().catch(() => undefined);
-  }, [fetchSettings]);
-
-  const updateSettings = useCallback(
-    async (payload: UpdateLanguageSettingsPayload) => {
+  const updateMutation = useMutation({
+    mutationFn: (payload: UpdateLanguageSettingsPayload) => {
       if (!languageId) {
         throw new Error("No language selected");
       }
-      const next = await api.put<UserLanguageSettings>(
+      return api.put<UserLanguageSettings>(
         `/api/languages/${languageId}/settings`,
         payload,
       );
-      setSettings(next);
-      setError(null);
-      return next;
     },
-    [languageId],
-  );
+    onSuccess: (next) => {
+      queryClient.setQueryData(settingsKey(languageId), next);
+    },
+  });
 
-  return { settings, loading, error, fetchSettings, updateSettings };
+  return {
+    settings: query.data ?? null,
+    loading: query.isLoading,
+    error: query.error?.message ?? null,
+    updateSettings: (payload: UpdateLanguageSettingsPayload) =>
+      updateMutation.mutateAsync(payload),
+  };
 }

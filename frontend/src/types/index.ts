@@ -54,6 +54,21 @@ export interface Example {
   updated_at: string;
 }
 
+export interface SentenceItem {
+  id: string;
+  word_id: string;
+  word: string;
+  language_id: string;
+  language_code: string;
+  sentence: string;
+  translation?: string;
+  note?: string;
+  next_review_at?: string | null;
+  repetitions?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SpacedRepetition {
   id: string;
   example_id: string;

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
 import { api } from "../lib/api";
 import type { Word, WordLevel } from "../types";
 
@@ -29,81 +30,70 @@ function dedupeWords(items: Word[]) {
   return Array.from(byKey.values());
 }
 
+const wordsKey = (languageId?: string | null) =>
+  ["words", languageId ?? null] as const;
+
 // languageId:
 //   undefined  — don't fetch yet (e.g. waiting for text to load)
 //   null       — fetch all words for the current user (dashboard)
 //   string     — fetch words filtered to that language
 export function useWords(languageId?: string | null) {
-  const [words, setWords] = useState<Word[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchWords = useCallback(() => {
-    // Don't fetch until we have a language context — avoids cross-language word collisions
-    if (languageId === undefined) {
-      setWords([]);
-      setLoading(false);
-      return;
-    }
+  const query = useQuery({
+    queryKey: wordsKey(languageId),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (languageId) params.set("language_id", languageId);
+      const q = params.toString();
+      const path = q ? `/api/words?${q}` : "/api/words";
+      return api.get<Word[]>(path);
+    },
+    enabled: languageId !== undefined,
+    select: dedupeWords,
+  });
 
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (languageId) params.set("language_id", languageId);
+  const words = useMemo(() => query.data ?? [], [query.data]);
 
-    const query = params.toString();
-    const path = query ? `/api/words?${query}` : "/api/words";
-
-    api
-      .get<Word[]>(path)
-      .then((data) => {
-        setWords(dedupeWords(data));
-        setError(null);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [languageId]);
-
-  useEffect(() => {
-    fetchWords();
-  }, [fetchWords]);
-
-  const createWord = useCallback(
-    async (word: {
+  const createMutation = useMutation({
+    mutationFn: (word: {
       language_id: string;
       text_id?: string;
       word: string;
       is_phrase: boolean;
       level: WordLevel;
       note?: string;
-    }) => {
-      const newWord = await api.post<Word>("/api/words", word);
-      setWords((prev) => dedupeWords([...prev, newWord]));
-      return newWord;
-    },
-    [],
-  );
-
-  const updateWord = useCallback(
-    async (
-      id: string,
-      updates: {
-        level?: WordLevel;
-        note?: string;
-      },
-    ) => {
-      const updated = await api.put<Word>(`/api/words/${id}`, updates);
-      setWords((prev) =>
-        dedupeWords(prev.map((w) => (w.id === id ? updated : w))),
+    }) => api.post<Word>("/api/words", word),
+    onSuccess: (newWord) => {
+      queryClient.setQueryData<Word[]>(wordsKey(languageId), (prev) =>
+        prev ? [...prev, newWord] : [newWord],
       );
-      return updated;
     },
-    [],
-  );
+  });
 
-  const deleteWord = useCallback(async (id: string) => {
-    await api.delete(`/api/words/${id}`);
-    setWords((prev) => prev.filter((w) => w.id !== id));
-  }, []);
+  const updateMutation = useMutation({
+    mutationFn: ({
+      id,
+      updates,
+    }: {
+      id: string;
+      updates: { level?: WordLevel; note?: string };
+    }) => api.put<Word>(`/api/words/${id}`, updates),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<Word[]>(wordsKey(languageId), (prev) =>
+        prev?.map((w) => (w.id === updated.id ? updated : w)),
+      );
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/words/${id}`),
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData<Word[]>(wordsKey(languageId), (prev) =>
+        prev?.filter((w) => w.id !== id),
+      );
+    },
+  });
 
   const getWordByText = useCallback(
     (text: string): Word | undefined => {
@@ -115,12 +105,19 @@ export function useWords(languageId?: string | null) {
 
   return {
     words,
-    loading,
-    error,
-    fetchWords,
-    createWord,
-    updateWord,
-    deleteWord,
+    loading: query.isPending && languageId !== undefined,
+    error: query.error?.message ?? null,
+    createWord: (word: {
+      language_id: string;
+      text_id?: string;
+      word: string;
+      is_phrase: boolean;
+      level: WordLevel;
+      note?: string;
+    }) => createMutation.mutateAsync(word),
+    updateWord: (id: string, updates: { level?: WordLevel; note?: string }) =>
+      updateMutation.mutateAsync({ id, updates }),
+    deleteWord: (id: string) => deleteMutation.mutateAsync(id),
     getWordByText,
   };
 }

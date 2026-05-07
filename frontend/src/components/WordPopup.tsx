@@ -52,7 +52,14 @@ interface WordPopupProps {
   onOpenDictionary?: (text: string) => void;
 }
 
-export default function WordPopup({
+// Outer wrapper keys the content on the selected target so internal state
+// resets cleanly whenever the parent points the popup at a new word/sentence.
+export default function WordPopup(props: WordPopupProps) {
+  const resetKey = props.existingWord?.id ?? `new:${props.sourceSentence}`;
+  return <WordPopupContent key={resetKey} {...props} />;
+}
+
+function WordPopupContent({
   wordText,
   sourceSentence,
   existingWord,
@@ -90,20 +97,10 @@ export default function WordPopup({
   } = useExamples(existingWord?.id);
 
   useEffect(() => {
-    setLevel(existingWord?.level ?? 1);
-    setNote(existingWord?.note ?? "");
-  }, [existingWord]);
-
-  useEffect(() => {
     if (existingWord) {
       fetchExamples();
     }
   }, [existingWord, fetchExamples]);
-
-  useEffect(() => {
-    if (!showExampleForm || editingExampleId) return;
-    setExampleSentence(sourceSentence);
-  }, [showExampleForm, editingExampleId, sourceSentence]);
 
   const startAddExample = () => {
     setEditingExampleId(null);

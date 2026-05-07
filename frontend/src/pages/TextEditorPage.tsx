@@ -8,64 +8,79 @@ import type { Text } from "../types";
 
 export default function TextEditorPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const { texts, loading, createText, updateText } = useTexts();
 
   const isEdit = Boolean(id);
-
   const existing = isEdit ? texts.find((t) => t.id === id) : null;
 
-  const [title, setTitle] = useState("");
-  const [languageId, setLanguageId] = useState("");
-  const [content, setContent] = useState("");
+  if (!isEdit) {
+    return <TextForm onCreate={createText} onUpdate={updateText} />;
+  }
+
+  if (existing) {
+    return (
+      <TextForm
+        key={existing.id}
+        existing={existing}
+        onCreate={createText}
+        onUpdate={updateText}
+      />
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-[var(--color-text3)]">
+        Loading…
+      </div>
+    );
+  }
+
+  // Edit mode but the text wasn't in the cached list — fetch directly.
+  return (
+    <TextFormFromApi
+      textId={id!}
+      onCreate={createText}
+      onUpdate={updateText}
+    />
+  );
+}
+
+interface TextFormProps {
+  existing?: Text;
+  onCreate: (text: {
+    language_id: string;
+    title: string;
+    content: string;
+  }) => Promise<Text>;
+  onUpdate: (
+    id: string,
+    text: Partial<{ language_id: string; title: string; content: string }>,
+  ) => Promise<Text>;
+}
+
+function TextForm({ existing, onCreate, onUpdate }: TextFormProps) {
+  const navigate = useNavigate();
+  const [title, setTitle] = useState(existing?.title ?? "");
+  const [languageId, setLanguageId] = useState(existing?.language_id ?? "");
+  const [content, setContent] = useState(existing?.content ?? "");
   const [saving, setSaving] = useState(false);
-  const [prefilledTextId, setPrefilledTextId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isEdit || !existing) return;
-    if (prefilledTextId === existing.id) return;
-
-    setTitle(existing.title);
-    setLanguageId(existing.language_id);
-    setContent(existing.content);
-    setPrefilledTextId(existing.id);
-  }, [isEdit, existing, prefilledTextId]);
-
-  useEffect(() => {
-    if (!isEdit || !id || existing || loading) return;
-
-    let cancelled = false;
-    api
-      .get<Text>(`/api/texts/${id}`)
-      .then((data) => {
-        if (cancelled) return;
-        setTitle(data.title);
-        setLanguageId(data.language_id);
-        setContent(data.content);
-        setPrefilledTextId(data.id);
-      })
-      .catch(() => {
-        // Keep form empty if the text cannot be loaded.
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isEdit, id, existing, loading]);
+  const isEdit = Boolean(existing);
 
   const handleSubmit = async () => {
     if (!content.trim()) return;
     setSaving(true);
     try {
-      if (isEdit && id) {
-        await updateText(id, { title, language_id: languageId, content });
-        navigate(`/texts/${id}`);
+      if (isEdit && existing) {
+        await onUpdate(existing.id, { title, language_id: languageId, content });
+        navigate(`/texts/${existing.id}`);
       } else {
         if (!languageId) {
           setSaving(false);
           return;
         }
-        await createText({
+        await onCreate({
           language_id: languageId,
           title: title || "Untitled",
           content,
@@ -140,4 +155,43 @@ export default function TextEditorPage() {
       </div>
     </div>
   );
+}
+
+interface TextFormFromApiProps extends Omit<TextFormProps, "existing"> {
+  textId: string;
+}
+
+function TextFormFromApi({ textId, ...rest }: TextFormFromApiProps) {
+  const [fetched, setFetched] = useState<Text | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<Text>(`/api/texts/${textId}`)
+      .then((data) => {
+        if (!cancelled) setFetched(data);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [textId]);
+
+  if (error) {
+    return <TextForm {...rest} />;
+  }
+
+  if (!fetched) {
+    return (
+      <div className="flex items-center justify-center h-full text-[var(--color-text3)]">
+        Loading…
+      </div>
+    );
+  }
+
+  return <TextForm key={fetched.id} existing={fetched} {...rest} />;
 }

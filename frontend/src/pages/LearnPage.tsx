@@ -1,4 +1,4 @@
-import { Brain, CheckCircle2, Eye, RotateCcw } from "lucide-react";
+import { Brain, CheckCircle2, Edit3, Eye, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useReviews } from "../hooks/useReviews";
 
@@ -309,8 +309,7 @@ export default function LearnPage() {
                 Translate this sentence
               </div>
               <div className="shrink-0 text-[11px] font-semibold text-[var(--color-text2)] bg-[var(--color-bg)] border border-[var(--color-border)] rounded-full px-2.5 py-1">
-                {current.language_code.toUpperCase()} ·{" "}
-                {current.language_direction.toUpperCase()}
+                {current.language_code.toUpperCase()}
               </div>
             </div>
 
@@ -355,9 +354,10 @@ export default function LearnPage() {
                   {hasTranslation && !isEditingTranslation && (
                     <button
                       onClick={handleEditTranslation}
-                      className="text-[11px] font-semibold text-[var(--color-text2)] hover:text-[var(--color-text)] transition-colors"
+                      title="Edit translation"
+                      className="p-1.5 rounded-md hover:bg-[var(--color-bg2)] text-[var(--color-text3)] transition-colors"
                     >
-                      Edit
+                      <Edit3 size={13} />
                     </button>
                   )}
                 </div>

@@ -4,6 +4,7 @@ import DashboardPage from "./pages/DashboardPage";
 import LearnPage from "./pages/LearnPage";
 import LoginPage from "./pages/LoginPage";
 import ReaderPage from "./pages/ReaderPage";
+import SentencesPage from "./pages/SentencesPage";
 import SettingsPage from "./pages/SettingsPage";
 import TextEditorPage from "./pages/TextEditorPage";
 import TextsPage from "./pages/TextsPage";
@@ -89,6 +90,14 @@ function App() {
           element={
             <PrivateRoute>
               <WordListPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/sentences"
+          element={
+            <PrivateRoute>
+              <SentencesPage />
             </PrivateRoute>
           }
         />

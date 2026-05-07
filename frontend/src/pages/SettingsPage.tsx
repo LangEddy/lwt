@@ -1,8 +1,9 @@
 import { Check, Settings2, Star } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useLanguageSettings } from "../hooks/useLanguageSettings";
 import { useLanguages } from "../hooks/useLanguages";
 import { useTts } from "../hooks/useTts";
+import type { Language, UserLanguageSettings } from "../types";
 
 export default function SettingsPage() {
   const {
@@ -10,17 +11,10 @@ export default function SettingsPage() {
     loading: languagesLoading,
     toggleFavorite,
   } = useLanguages();
-  const [selectedLanguageId, setSelectedLanguageId] = useState("");
-  const selectedLanguage = useMemo(
-    () => languages.find((l) => l.id === selectedLanguageId),
-    [languages, selectedLanguageId],
-  );
+  const [pickedLanguageId, setPickedLanguageId] = useState("");
 
-  useEffect(() => {
-    if (!selectedLanguageId && languages.length > 0) {
-      setSelectedLanguageId(languages[0].id);
-    }
-  }, [languages, selectedLanguageId]);
+  const selectedLanguageId = pickedLanguageId || languages[0]?.id || "";
+  const selectedLanguage = languages.find((l) => l.id === selectedLanguageId);
 
   const {
     settings,
@@ -28,44 +22,10 @@ export default function SettingsPage() {
     updateSettings,
   } = useLanguageSettings(selectedLanguageId || undefined);
 
-  const { filteredVoices, supported } = useTts(
-    selectedLanguage?.code,
-    settings?.tts_voice,
-  );
-
-  const [ttsVoice, setTtsVoice] = useState("");
-  const [dictionaryUrl, setDictionaryUrl] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setTtsVoice(settings?.tts_voice ?? "");
-    setDictionaryUrl(settings?.dictionary_url ?? "");
-  }, [settings?.tts_voice, settings?.dictionary_url, selectedLanguageId]);
-
-  const hasChanges =
-    (settings?.tts_voice ?? "") !== ttsVoice ||
-    (settings?.dictionary_url ?? "") !== dictionaryUrl;
-
-  const handleSave = async () => {
-    if (!selectedLanguageId) return;
-    setSaving(true);
-    setSaved(false);
-    setError(null);
-    try {
-      await updateSettings({
-        tts_voice: ttsVoice,
-        dictionary_url: dictionaryUrl,
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
+  const settingsReady =
+    Boolean(selectedLanguageId) &&
+    !settingsLoading &&
+    (settings === null || settings?.language_id === selectedLanguageId);
 
   return (
     <div className="p-4 pb-6 overflow-y-auto">
@@ -87,7 +47,7 @@ export default function SettingsPage() {
           </label>
           <select
             value={selectedLanguageId}
-            onChange={(e) => setSelectedLanguageId(e.target.value)}
+            onChange={(e) => setPickedLanguageId(e.target.value)}
             disabled={languagesLoading}
             className="w-full px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[15px] outline-none focus:border-[var(--color-text)] transition-colors cursor-pointer"
           >
@@ -122,61 +82,115 @@ export default function SettingsPage() {
           </button>
         )}
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[13px] font-semibold text-[var(--color-text2)] uppercase tracking-wider">
-            TTS Voice
-          </label>
-          {supported ? (
-            <select
-              value={ttsVoice}
-              onChange={(e) => setTtsVoice(e.target.value)}
-              disabled={settingsLoading}
-              className="w-full px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[15px] outline-none focus:border-[var(--color-text)] transition-colors cursor-pointer"
-            >
-              <option value="">Browser default</option>
-              {filteredVoices.map((voice) => (
-                <option key={voice.voiceURI} value={voice.voiceURI}>
-                  {voice.name} ({voice.lang})
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-bg)] text-[14px] text-[var(--color-text3)]">
-              Browser TTS is not supported on this device.
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[13px] font-semibold text-[var(--color-text2)] uppercase tracking-wider">
-            Dictionary URL Template
-          </label>
-          <input
-            value={dictionaryUrl}
-            onChange={(e) => setDictionaryUrl(e.target.value)}
-            placeholder="https://www.wordreference.com/es/en/translation.asp?tranword={word}"
-            className="w-full px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[15px] outline-none focus:border-[var(--color-text)] transition-colors"
+        {settingsReady && selectedLanguage && (
+          <LanguageSettingsForm
+            key={selectedLanguageId}
+            language={selectedLanguage}
+            settings={settings}
+            onSave={updateSettings}
           />
-          <p className="text-[12px] text-[var(--color-text3)]">
-            Use {"{word}"} where the selected word should be injected.
-          </p>
-        </div>
-
-        {error && (
-          <p className="text-[13px] text-[var(--color-red)]">{error}</p>
         )}
-
-        <div className="flex gap-2.5">
-          <button
-            onClick={handleSave}
-            disabled={saving || !selectedLanguageId || !hasChanges}
-            className="flex-1 flex items-center justify-center gap-2 py-3.5 px-5 rounded-[10px] bg-[var(--color-text)] text-[var(--color-surface)] font-semibold text-[15px] transition-opacity hover:opacity-90 disabled:opacity-50"
-          >
-            <Check size={16} />
-            {saving ? "Saving…" : saved ? "Saved" : "Save settings"}
-          </button>
-        </div>
       </div>
     </div>
+  );
+}
+
+interface LanguageSettingsFormProps {
+  language: Language;
+  settings: UserLanguageSettings | null;
+  onSave: (payload: {
+    tts_voice?: string;
+    dictionary_url?: string;
+  }) => Promise<UserLanguageSettings>;
+}
+
+function LanguageSettingsForm({
+  language,
+  settings,
+  onSave,
+}: LanguageSettingsFormProps) {
+  const [ttsVoice, setTtsVoice] = useState(settings?.tts_voice ?? "");
+  const [dictionaryUrl, setDictionaryUrl] = useState(
+    settings?.dictionary_url ?? "",
+  );
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { filteredVoices, supported } = useTts(language.code, ttsVoice);
+
+  const hasChanges =
+    (settings?.tts_voice ?? "") !== ttsVoice ||
+    (settings?.dictionary_url ?? "") !== dictionaryUrl;
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await onSave({ tts_voice: ttsVoice, dictionary_url: dictionaryUrl });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[13px] font-semibold text-[var(--color-text2)] uppercase tracking-wider">
+          TTS Voice
+        </label>
+        {supported ? (
+          <select
+            value={ttsVoice}
+            onChange={(e) => setTtsVoice(e.target.value)}
+            className="w-full px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[15px] outline-none focus:border-[var(--color-text)] transition-colors cursor-pointer"
+          >
+            <option value="">Browser default</option>
+            {filteredVoices.map((voice) => (
+              <option key={voice.voiceURI} value={voice.voiceURI}>
+                {voice.name} ({voice.lang})
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-bg)] text-[14px] text-[var(--color-text3)]">
+            Browser TTS is not supported on this device.
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[13px] font-semibold text-[var(--color-text2)] uppercase tracking-wider">
+          Dictionary URL Template
+        </label>
+        <input
+          value={dictionaryUrl}
+          onChange={(e) => setDictionaryUrl(e.target.value)}
+          placeholder="https://www.wordreference.com/es/en/translation.asp?tranword={word}"
+          className="w-full px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[15px] outline-none focus:border-[var(--color-text)] transition-colors"
+        />
+        <p className="text-[12px] text-[var(--color-text3)]">
+          Use {"{word}"} where the selected word should be injected.
+        </p>
+      </div>
+
+      {error && <p className="text-[13px] text-[var(--color-red)]">{error}</p>}
+
+      <div className="flex gap-2.5">
+        <button
+          onClick={handleSave}
+          disabled={saving || !hasChanges}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 px-5 rounded-[10px] bg-[var(--color-text)] text-[var(--color-surface)] font-semibold text-[15px] transition-opacity hover:opacity-90 disabled:opacity-50"
+        >
+          <Check size={16} />
+          {saving ? "Saving…" : saved ? "Saved" : "Save settings"}
+        </button>
+      </div>
+    </>
   );
 }
