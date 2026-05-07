@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { UpdateBanner } from "./components/UpdateBanner";
 import DashboardPage from "./pages/DashboardPage";
 import LearnPage from "./pages/LearnPage";
 import LoginPage from "./pages/LoginPage";
@@ -28,6 +29,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <BrowserRouter>
+      <UpdateBanner />
       <Routes>
         <Route
           path="/login"
