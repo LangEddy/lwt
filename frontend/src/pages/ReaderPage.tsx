@@ -650,6 +650,7 @@ export default function ReaderPage() {
                 ? "text-[18px] leading-[1.9] text-[var(--color-text)] whitespace-pre-wrap font-serif"
                 : "reader-rich text-[18px] leading-[1.9] text-[var(--color-text)] font-serif"
             }
+            lang={text.language_code}
             dir={direction}
             style={{ textAlign: direction === "rtl" ? "right" : "left" }}
           >
@@ -663,6 +664,7 @@ export default function ReaderPage() {
         <WordPopup
           wordText={selectedText}
           sourceSentence={selectedSentence}
+          languageCode={text.language_code}
           existingWord={selectedWord}
           onSave={handleSave}
           onDelete={handleDelete}

@@ -33,6 +33,14 @@ export default function WordListPage() {
     return map;
   }, [languages]);
 
+  const languageCodeMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const lang of languages) {
+      map.set(lang.id, lang.code);
+    }
+    return map;
+  }, [languages]);
+
   const filteredWords = useMemo(() => {
     let result = words;
     if (levelFilter.length > 0) {
@@ -225,7 +233,11 @@ export default function WordListPage() {
                 className="flex-1 min-w-0 text-left"
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="font-bold text-[15px]" dir="auto">
+                  <span
+                    className="font-bold text-[15px]"
+                    lang={languageCodeMap.get(word.language_id)}
+                    dir="auto"
+                  >
                     {word.word}
                   </span>
                   <span
@@ -291,6 +303,7 @@ export default function WordListPage() {
         <WordPopup
           wordText={selectedWord.word}
           sourceSentence={selectedWord.word}
+          languageCode={languageCodeMap.get(selectedWord.language_id)}
           existingWord={selectedWord}
           onSave={handleSave}
           onDelete={handleDelete}

@@ -216,7 +216,11 @@ export default function SentencesPage() {
               >
                 {isEditing ? (
                   <div className="flex flex-col gap-2">
-                    <div className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-bg)] text-[14px] text-[var(--color-text2)] leading-relaxed">
+                    <div
+                      className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-bg)] text-[14px] text-[var(--color-text2)] leading-relaxed"
+                      lang={item.language_code}
+                      dir="auto"
+                    >
                       {item.sentence}
                     </div>
                     <textarea
@@ -260,6 +264,7 @@ export default function SentencesPage() {
                   <>
                     <p
                       className="font-semibold text-[15px] leading-relaxed"
+                      lang={item.language_code}
                       dir="auto"
                     >
                       {item.sentence}
@@ -284,7 +289,11 @@ export default function SentencesPage() {
                       <span className="px-1.5 py-0.5 rounded-md bg-[var(--color-bg2)] text-[var(--color-text2)] font-semibold">
                         {item.language_code.toUpperCase()}
                       </span>
-                      <span className="font-medium" dir="auto">
+                      <span
+                        className="font-medium"
+                        lang={item.language_code}
+                        dir="auto"
+                      >
                         {item.word}
                       </span>
                       <span className="inline-flex items-center gap-1">

@@ -25,6 +25,7 @@ const LEVELS: { value: WordLevel; label: string; short: string }[] = [
 interface WordPopupProps {
   wordText: string;
   sourceSentence: string;
+  languageCode?: string;
   existingWord?: Word;
   onSave: (
     level: WordLevel,
@@ -62,6 +63,7 @@ export default function WordPopup(props: WordPopupProps) {
 function WordPopupContent({
   wordText,
   sourceSentence,
+  languageCode,
   existingWord,
   onSave,
   onDelete,
@@ -190,6 +192,7 @@ function WordPopupContent({
         <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
           <h3
             className="font-bold text-[24px] break-words font-serif"
+            lang={languageCode}
             dir="auto"
           >
             {wordText}
@@ -380,7 +383,11 @@ function WordPopupContent({
 
             {showExampleForm && (
               <div className="bg-[var(--color-bg)] rounded-[10px] p-3 mb-2 border border-[var(--color-border)]">
-                <div className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[14px] text-[var(--color-text2)] leading-relaxed mb-2">
+                <div
+                  className="w-full px-3 py-2 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[14px] text-[var(--color-text2)] leading-relaxed mb-2"
+                  lang={languageCode}
+                  dir="auto"
+                >
                   {exampleSentence ||
                     sourceSentence ||
                     "No sentence context available."}
@@ -438,7 +445,11 @@ function WordPopupContent({
                     key={ex.id}
                     className="bg-[var(--color-bg)] rounded-[10px] p-3 border border-[var(--color-border)]"
                   >
-                    <p className="text-[14px] text-[var(--color-text)] leading-relaxed mb-1">
+                    <p
+                      className="text-[14px] text-[var(--color-text)] leading-relaxed mb-1"
+                      lang={languageCode}
+                      dir="auto"
+                    >
                       {ex.sentence}
                     </p>
                     {ex.translation && (

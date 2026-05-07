@@ -314,7 +314,10 @@ export default function LearnPage() {
             </div>
 
             {/* Target word highlight in sentence */}
-            <p className="text-[19px] leading-[1.8] text-[var(--color-text)] font-serif">
+            <p
+              className="text-[19px] leading-[1.8] text-[var(--color-text)] font-serif"
+              lang={current.language_code}
+            >
               {current.sentence
                 .split(
                   new RegExp(
