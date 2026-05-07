@@ -1,18 +1,30 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BookOpen, Plus, Search, Trash2 } from 'lucide-react'
 import { useTexts } from '../hooks/useTexts'
+import { contentToPlainText } from '../lib/contentParser'
 
 export default function TextsPage() {
   const [search, setSearch] = useState('')
   const { texts, loading, deleteText } = useTexts()
   const navigate = useNavigate()
 
-  const filtered = texts.filter(
-    t =>
-      t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.content.toLowerCase().includes(search.toLowerCase()),
-  )
+  const previews = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const t of texts) {
+      map.set(t.id, contentToPlainText(t.content, t.content_type))
+    }
+    return map
+  }, [texts])
+
+  const needle = search.toLowerCase()
+  const filtered = texts.filter(t => {
+    const preview = previews.get(t.id) ?? ''
+    return (
+      t.title.toLowerCase().includes(needle) ||
+      preview.toLowerCase().includes(needle)
+    )
+  })
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -63,7 +75,7 @@ export default function TextsPage() {
                   </span>
                 </div>
                 <p className="text-[13px] text-[var(--color-text2)] leading-relaxed line-clamp-2">
-                  {t.content}
+                  {previews.get(t.id) ?? ''}
                 </p>
                 <div className="text-[11px] text-[var(--color-text3)] mt-1">
                   {new Date(t.created_at).toLocaleDateString()}

@@ -1,5 +1,5 @@
 import { ArrowLeft, BookOpen, Paintbrush, Pencil, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import DictionaryViewer from "../components/DictionaryViewer";
 import WordPopup from "../components/WordPopup";
@@ -8,6 +8,7 @@ import { useLanguageSettings } from "../hooks/useLanguageSettings";
 import { useTts } from "../hooks/useTts";
 import { useWords } from "../hooks/useWords";
 import { api } from "../lib/api";
+import { parseContent, stripFormatting, type RichNode } from "../lib/contentParser";
 import { initTokenizer, normalizeWord, tokenize } from "../lib/tokenizer";
 import type { Text, Word, WordLevel } from "../types";
 
@@ -15,11 +16,124 @@ interface TokenState {
   type: "word" | "separator";
   value: string;
   index: number;
+  chunkId: number;
   wordId?: string;
   level?: WordLevel;
   isPhrase?: boolean;
   phraseStart?: number;
   phraseEnd?: number;
+}
+
+const VOID_TAGS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+]);
+
+function reactAttrs(attrs: Record<string, string>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith("on")) continue;
+    if (k === "class") out.className = v;
+    else if (k === "for") out.htmlFor = v;
+    else if (k === "colspan") out.colSpan = parseInt(v, 10);
+    else if (k === "rowspan") out.rowSpan = parseInt(v, 10);
+    else out[k] = v;
+  }
+  return out;
+}
+
+function renderToken(
+  t: TokenState,
+  selectedRange: { start: number; end: number } | null,
+  onTokenClick: (index: number) => void,
+): ReactNode {
+  const i = t.index;
+  if (t.type === "separator") {
+    return <span key={i}>{t.value}</span>;
+  }
+
+  const isSelected =
+    selectedRange && i >= selectedRange.start && i <= selectedRange.end;
+  const visualLevel: WordLevel = (t.level ?? 1) as WordLevel;
+
+  let className =
+    "cursor-pointer rounded-[4px] px-[2px] transition-all duration-150 ";
+  const style: React.CSSProperties = {};
+
+  if (isSelected) {
+    className +=
+      "ring-2 ring-[var(--color-accent)] ring-offset-1 ring-offset-[var(--color-bg)] ";
+  }
+
+  if (t.isPhrase) {
+    className += "border-b-[1.5px] border-dotted ";
+  }
+
+  style.backgroundColor = `var(--color-word-${visualLevel}-bg)`;
+  style.color = `var(--color-word-${visualLevel}-text)`;
+
+  return (
+    <span
+      key={i}
+      className={className}
+      style={style}
+      onClick={() => onTokenClick(i)}
+    >
+      {t.value}
+    </span>
+  );
+}
+
+function renderNode(
+  node: RichNode,
+  key: string,
+  tokenStates: TokenState[],
+  selectedRange: { start: number; end: number } | null,
+  onTokenClick: (index: number) => void,
+): ReactNode {
+  if (node.kind === "text") {
+    const out: ReactNode[] = [];
+    for (let i = node.startIndex; i < node.endIndex; i++) {
+      out.push(renderToken(tokenStates[i], selectedRange, onTokenClick));
+    }
+    return <span key={key}>{out}</span>;
+  }
+  const Tag = node.tag as keyof React.JSX.IntrinsicElements;
+  const props = reactAttrs(node.attrs);
+  if (VOID_TAGS.has(node.tag)) {
+    return <Tag key={key} {...props} />;
+  }
+  const children = node.children.map((c, i) =>
+    renderNode(c, `${key}.${i}`, tokenStates, selectedRange, onTokenClick),
+  );
+  return (
+    <Tag key={key} {...props}>
+      {children}
+    </Tag>
+  );
+}
+
+function renderTokenRange(
+  tree: RichNode[],
+  tokenStates: TokenState[],
+  selectedRange: { start: number; end: number } | null,
+  onTokenClick: (index: number) => void,
+): ReactNode {
+  return tree.map((node, i) =>
+    renderNode(node, String(i), tokenStates, selectedRange, onTokenClick),
+  );
 }
 
 export default function ReaderPage() {
@@ -46,6 +160,8 @@ export default function ReaderPage() {
   } | null>(null);
   const [popupOpen, setPopupOpen] = useState(false);
   const [dictionaryUrl, setDictionaryUrl] = useState<string | null>(null);
+  const [sweepOpen, setSweepOpen] = useState(false);
+  const [sweeping, setSweeping] = useState(false);
 
   const { settings: languageSettings } = useLanguageSettings(text?.language_id);
   const { supported: ttsSupported, speak } = useTts(
@@ -74,13 +190,39 @@ export default function ReaderPage() {
   const isTextLoading =
     textStatus === "loading" || (Boolean(id) && text?.id !== id && !textError);
 
-  const tokens = useMemo(() => {
-    if (!text) return [];
-    return tokenize(text.content);
+  const parsed = useMemo(() => {
+    if (!text) return { tokens: [], tree: [] as RichNode[], chunkOf: [] as number[] };
+    const { tokens: parsedTokens, tree } = parseContent(
+      text.content,
+      text.content_type,
+    );
+    // Build per-token chunk map by walking the tree
+    const chunkOf = new Array<number>(parsedTokens.length).fill(-1);
+    let chunkCounter = 0;
+    const assign = (nodes: RichNode[]) => {
+      for (const node of nodes) {
+        if (node.kind === "text") {
+          const id = chunkCounter++;
+          for (let i = node.startIndex; i < node.endIndex; i++) {
+            chunkOf[i] = id;
+          }
+        } else {
+          assign(node.children);
+        }
+      }
+    };
+    assign(tree);
+    return { tokens: parsedTokens, tree, chunkOf };
   }, [text]);
 
+  const tokens = parsed.tokens;
+
   const tokenStates = useMemo(() => {
-    const states: TokenState[] = tokens.map((t, i) => ({ ...t, index: i }));
+    const states: TokenState[] = tokens.map((t, i) => ({
+      ...t,
+      index: i,
+      chunkId: parsed.chunkOf[i] ?? -1,
+    }));
 
     // Build a map of normalized single words
     const singleWordMap = new Map<string, Word>();
@@ -101,7 +243,8 @@ export default function ReaderPage() {
       }
     }
 
-    // Second pass: mark phrases
+    // Second pass: mark phrases — restricted to within a single text chunk
+    // so phrases don't cross element boundaries (e.g. heading → paragraph).
     const phrases = words.filter((w) => w.is_phrase);
     for (const phrase of phrases) {
       const phraseWords = tokenize(phrase.word)
@@ -122,10 +265,12 @@ export default function ReaderPage() {
         start++
       ) {
         let match = true;
+        const firstChunk = states[wordPositions[start]].chunkId;
         for (let k = 0; k < phraseWords.length; k++) {
           const pos = wordPositions[start + k];
           if (
             states[pos].isPhrase ||
+            states[pos].chunkId !== firstChunk ||
             normalizeWord(states[pos].value) !== phraseWords[k]
           ) {
             match = false;
@@ -148,7 +293,7 @@ export default function ReaderPage() {
     }
 
     return states;
-  }, [tokens, words]);
+  }, [tokens, parsed.chunkOf, words]);
 
   const handleTokenClick = (index: number) => {
     const t = tokenStates[index];
@@ -195,9 +340,11 @@ export default function ReaderPage() {
     if (!selectedRange || tokens.length === 0) return "";
 
     const isSentenceBoundary = (value: string) => /[.!?\n]/.test(value);
+    const chunk = parsed.chunkOf[selectedRange.start];
 
     let start = selectedRange.start;
     while (start > 0) {
+      if (parsed.chunkOf[start - 1] !== chunk) break;
       const prev = tokens[start - 1];
       if (prev.type === "separator" && isSentenceBoundary(prev.value)) break;
       start--;
@@ -205,6 +352,7 @@ export default function ReaderPage() {
 
     let end = selectedRange.end;
     while (end < tokens.length - 1) {
+      if (parsed.chunkOf[end + 1] !== chunk) break;
       const current = tokens[end];
       if (current.type === "separator" && isSentenceBoundary(current.value)) {
         break;
@@ -217,7 +365,7 @@ export default function ReaderPage() {
       .map((t) => t.value)
       .join("")
       .trim();
-  }, [selectedRange, tokens]);
+  }, [selectedRange, tokens, parsed.chunkOf]);
 
   const handleSave = async (
     level: WordLevel,
@@ -252,11 +400,12 @@ export default function ReaderPage() {
       });
     }
 
-    const sentence = pendingExample?.sentence?.trim();
+    const sentence = stripFormatting(pendingExample?.sentence ?? "");
     if (sentence) {
       await api.post(`/api/words/${savedWord.id}/examples`, {
         sentence,
-        translation: pendingExample?.translation?.trim() || undefined,
+        translation:
+          stripFormatting(pendingExample?.translation ?? "") || undefined,
         note: pendingExample?.note?.trim() || undefined,
       });
     }
@@ -271,6 +420,46 @@ export default function ReaderPage() {
     setPopupOpen(false);
     setSelectedRange(null);
   };
+
+  const runSweep = async (level: WordLevel) => {
+    if (!text) return;
+    setSweeping(true);
+    try {
+      const uniqueUnseen = new Map<string, string>();
+      for (const t of tokenStates) {
+        if (t.type === "word" && !t.level) {
+          const key = normalizeWord(t.value);
+          if (!uniqueUnseen.has(key)) uniqueUnseen.set(key, t.value);
+        }
+      }
+      for (const wordValue of uniqueUnseen.values()) {
+        await createWord({
+          language_id: text.language_id,
+          text_id: text.id,
+          word: wordValue,
+          is_phrase: false,
+          level,
+          note: "",
+        });
+      }
+    } finally {
+      setSweeping(false);
+      setSweepOpen(false);
+    }
+  };
+
+  const unseenCount = useMemo(() => {
+    const seen = new Set<string>();
+    let count = 0;
+    for (const t of tokenStates) {
+      if (t.type !== "word" || t.level) continue;
+      const key = normalizeWord(t.value);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      count++;
+    }
+    return count;
+  }, [tokenStates]);
 
   const handleExpandLeft = () => {
     if (!selectedRange) return;
@@ -442,27 +631,7 @@ export default function ReaderPage() {
               <Trash2 size={16} />
             </button>
             <button
-              onClick={async () => {
-                if (!confirm("Mark all unseen words as Unknown?")) return;
-                // Deduplicate by normalized text to avoid creating one entry per occurrence
-                const uniqueUnseen = new Map<string, string>();
-                for (const t of tokenStates) {
-                  if (t.type === "word" && !t.level) {
-                    const key = normalizeWord(t.value);
-                    if (!uniqueUnseen.has(key)) uniqueUnseen.set(key, t.value);
-                  }
-                }
-                for (const wordValue of uniqueUnseen.values()) {
-                  await createWord({
-                    language_id: text.language_id,
-                    text_id: text.id,
-                    word: wordValue,
-                    is_phrase: false,
-                    level: 1,
-                    note: "",
-                  });
-                }
-              }}
+              onClick={() => setSweepOpen(true)}
               className="flex items-center gap-1 px-2 py-1.5 rounded-[8px] text-[11px] font-semibold bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text2)] hover:bg-[var(--color-bg2)] transition-colors shrink-0"
             >
               <Paintbrush size={12} />
@@ -476,50 +645,15 @@ export default function ReaderPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="max-w-xl mx-auto">
           <div
-            className="text-[18px] leading-[1.9] text-[var(--color-text)] whitespace-pre-wrap font-serif"
+            className={
+              text.content_type === "plain"
+                ? "text-[18px] leading-[1.9] text-[var(--color-text)] whitespace-pre-wrap font-serif"
+                : "reader-rich text-[18px] leading-[1.9] text-[var(--color-text)] font-serif"
+            }
             dir={direction}
             style={{ textAlign: direction === "rtl" ? "right" : "left" }}
           >
-            {tokenStates.map((t) => {
-              const i = t.index;
-              if (t.type === "separator") {
-                return <span key={i}>{t.value}</span>;
-              }
-
-              const isSelected =
-                selectedRange &&
-                i >= selectedRange.start &&
-                i <= selectedRange.end;
-              const level = t.level;
-              const visualLevel: WordLevel = level ?? 1;
-
-              let className =
-                "cursor-pointer rounded-[4px] px-[2px] transition-all duration-150 ";
-              const style: React.CSSProperties = {};
-
-              if (isSelected) {
-                className +=
-                  "ring-2 ring-[var(--color-accent)] ring-offset-1 ring-offset-[var(--color-bg)] ";
-              }
-
-              if (t.isPhrase) {
-                className += "border-b-[1.5px] border-dotted ";
-              }
-
-              style.backgroundColor = `var(--color-word-${visualLevel}-bg)`;
-              style.color = `var(--color-word-${visualLevel}-text)`;
-
-              return (
-                <span
-                  key={i}
-                  className={className}
-                  style={style}
-                  onClick={() => handleTokenClick(i)}
-                >
-                  {t.value}
-                </span>
-              );
-            })}
+            {renderTokenRange(parsed.tree, tokenStates, selectedRange, handleTokenClick)}
           </div>
         </div>
       </div>
@@ -571,6 +705,121 @@ export default function ReaderPage() {
           onClose={() => setDictionaryUrl(null)}
         />
       )}
+
+      {sweepOpen && (
+        <SweepDialog
+          unseenCount={unseenCount}
+          busy={sweeping}
+          onCancel={() => setSweepOpen(false)}
+          onConfirm={runSweep}
+        />
+      )}
+    </div>
+  );
+}
+
+const SWEEP_LEVELS: { value: WordLevel; label: string }[] = [
+  { value: 1, label: "Unknown" },
+  { value: 2, label: "Seen" },
+  { value: 3, label: "Ok-ish" },
+  { value: 4, label: "Good" },
+  { value: 5, label: "Known" },
+];
+
+interface SweepDialogProps {
+  unseenCount: number;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (level: WordLevel) => void;
+}
+
+function SweepDialog({
+  unseenCount,
+  busy,
+  onCancel,
+  onConfirm,
+}: SweepDialogProps) {
+  const [level, setLevel] = useState<WordLevel>(1);
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+      <div
+        className="w-full max-w-sm bg-[var(--color-surface)] rounded-[14px] border border-[var(--color-border)] shadow-xl animate-slide-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 pt-5 pb-3">
+          <h2 className="font-bold text-[17px] mb-1">Sweep unseen words</h2>
+          <p className="text-[13px] text-[var(--color-text2)] leading-relaxed">
+            Mark all {unseenCount} unseen{" "}
+            {unseenCount === 1 ? "word" : "words"} in this text at the level
+            below.
+          </p>
+        </div>
+
+        <div className="px-5 pb-4">
+          <label className="text-[12px] font-semibold text-[var(--color-text2)] uppercase tracking-wider mb-2 block">
+            Level
+          </label>
+          <div className="grid grid-cols-5 gap-1.5">
+            {SWEEP_LEVELS.map((lvl) => {
+              const active = level === lvl.value;
+              const bgVar = active
+                ? `var(--color-word-${lvl.value}-bg)`
+                : "var(--color-bg2)";
+              const textVar = active
+                ? `var(--color-word-${lvl.value}-text)`
+                : "var(--color-text2)";
+              return (
+                <button
+                  key={lvl.value}
+                  type="button"
+                  onClick={() => setLevel(lvl.value)}
+                  className="flex flex-col items-center gap-1 py-2.5 rounded-[10px] border-[1.5px] transition-all"
+                  style={{
+                    backgroundColor: bgVar,
+                    borderColor: active ? textVar : "transparent",
+                    color: textVar,
+                  }}
+                >
+                  <span
+                    className="inline-block w-3 h-3 rounded-full"
+                    style={{
+                      backgroundColor:
+                        lvl.value === 5
+                          ? "transparent"
+                          : `var(--color-word-${lvl.value}-bg)`,
+                      border:
+                        lvl.value === 5
+                          ? "2px solid var(--color-border)"
+                          : "none",
+                    }}
+                  />
+                  <span className="text-[10px] font-medium leading-tight">
+                    {lvl.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex gap-2 px-5 pb-5">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="flex-1 py-2.5 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] font-semibold text-[14px] hover:bg-[var(--color-bg)] transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(level)}
+            disabled={busy || unseenCount === 0}
+            className="flex-1 py-2.5 rounded-[10px] bg-[var(--color-text)] text-[var(--color-surface)] font-semibold text-[14px] hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {busy ? "Marking…" : "Mark words"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

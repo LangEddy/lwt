@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import LanguageSelect from "../components/LanguageSelect";
 import { useTexts } from "../hooks/useTexts";
 import { api } from "../lib/api";
-import type { Text } from "../types";
+import type { Text, TextContentType } from "../types";
 
 export default function TextEditorPage() {
   const { id } = useParams();
@@ -52,10 +52,16 @@ interface TextFormProps {
     language_id: string;
     title: string;
     content: string;
+    content_type?: TextContentType;
   }) => Promise<Text>;
   onUpdate: (
     id: string,
-    text: Partial<{ language_id: string; title: string; content: string }>,
+    text: Partial<{
+      language_id: string;
+      title: string;
+      content: string;
+      content_type: TextContentType;
+    }>,
   ) => Promise<Text>;
 }
 
@@ -64,6 +70,9 @@ function TextForm({ existing, onCreate, onUpdate }: TextFormProps) {
   const [title, setTitle] = useState(existing?.title ?? "");
   const [languageId, setLanguageId] = useState(existing?.language_id ?? "");
   const [content, setContent] = useState(existing?.content ?? "");
+  const [contentType, setContentType] = useState<TextContentType>(
+    existing?.content_type ?? "plain",
+  );
   const [saving, setSaving] = useState(false);
 
   const isEdit = Boolean(existing);
@@ -73,7 +82,12 @@ function TextForm({ existing, onCreate, onUpdate }: TextFormProps) {
     setSaving(true);
     try {
       if (isEdit && existing) {
-        await onUpdate(existing.id, { title, language_id: languageId, content });
+        await onUpdate(existing.id, {
+          title,
+          language_id: languageId,
+          content,
+          content_type: contentType,
+        });
         navigate(`/texts/${existing.id}`);
       } else {
         if (!languageId) {
@@ -84,6 +98,7 @@ function TextForm({ existing, onCreate, onUpdate }: TextFormProps) {
           language_id: languageId,
           title: title || "Untitled",
           content,
+          content_type: contentType,
         });
         navigate("/texts");
       }
@@ -125,14 +140,42 @@ function TextForm({ existing, onCreate, onUpdate }: TextFormProps) {
 
         <div className="flex flex-col gap-1.5">
           <label className="text-[13px] font-semibold text-[var(--color-text2)] uppercase tracking-wider">
+            Format
+          </label>
+          <div className="flex gap-1.5">
+            {(["plain", "markdown", "html"] as const).map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setContentType(opt)}
+                className={`flex-1 px-3 py-2 rounded-[10px] border-[1.5px] text-[13px] font-semibold capitalize transition-colors ${
+                  contentType === opt
+                    ? "border-[var(--color-text)] bg-[var(--color-text)] text-[var(--color-surface)]"
+                    : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text2)] hover:bg-[var(--color-bg)]"
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[13px] font-semibold text-[var(--color-text2)] uppercase tracking-wider">
             Text Content
           </label>
           <textarea
-            placeholder="Paste your text here…"
+            placeholder={
+              contentType === "markdown"
+                ? "# Heading\n\nParagraph with **bold** and *italic*…"
+                : contentType === "html"
+                  ? "<h1>Heading</h1>\n<p>Paragraph…</p>"
+                  : "Paste your text here…"
+            }
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={12}
-            className="w-full px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[15px] outline-none focus:border-[var(--color-text)] transition-colors resize-y leading-relaxed"
+            className="w-full px-3.5 py-3 rounded-[10px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-surface)] text-[15px] outline-none focus:border-[var(--color-text)] transition-colors resize-y leading-relaxed font-mono"
           />
         </div>
 

@@ -6,7 +6,6 @@ import {
   LogOut,
   Menu,
   MessageSquare,
-  Settings2,
   User,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -19,11 +18,23 @@ export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
+  const user = useAuthStore((s) => s.user);
+
+  const userName =
+    (user?.user_metadata?.full_name as string | undefined) ||
+    (user?.user_metadata?.name as string | undefined) ||
+    "Learner";
+  const userEmail = user?.email ?? "";
 
   const handleSignOut = async () => {
     await logout();
     setSidebarOpen(false);
     navigate("/login", { replace: true });
+  };
+
+  const handleOpenSettings = () => {
+    navigate("/settings");
+    setSidebarOpen(false);
   };
 
   useEffect(() => {
@@ -42,7 +53,6 @@ export function Layout({ children }: { children: ReactNode }) {
     { id: "/texts", icon: BookOpen, label: "Texts" },
     { id: "/learn", icon: Brain, label: "Learn" },
     { id: "/words", icon: List, label: "Words" },
-    { id: "/settings", icon: Settings2, label: "Settings" },
   ];
 
   const navItems = [
@@ -51,7 +61,6 @@ export function Layout({ children }: { children: ReactNode }) {
     { id: "/learn", icon: Brain, label: "Learn" },
     { id: "/words", icon: List, label: "Word List" },
     { id: "/sentences", icon: MessageSquare, label: "Sentences" },
-    { id: "/settings", icon: Settings2, label: "Settings" },
   ];
 
   // Hide bottom nav on immersive screens (reader, text editor)
@@ -107,17 +116,25 @@ export function Layout({ children }: { children: ReactNode }) {
             })}
           </div>
           <div className="p-4 border-t border-[var(--color-border)]">
-            <div className="flex items-center gap-3 mb-3 px-3">
+            <button
+              onClick={handleOpenSettings}
+              aria-label="Open settings"
+              className={`flex items-center gap-3 w-full px-3 py-2 mb-2 rounded-lg transition-colors text-left ${
+                location.pathname.startsWith("/settings")
+                  ? "bg-[var(--color-bg)]"
+                  : "hover:bg-[var(--color-bg)]"
+              }`}
+            >
               <div className="w-8 h-8 rounded-full bg-[var(--color-bg2)] flex items-center justify-center shrink-0">
                 <User size={16} className="text-[var(--color-text3)]" />
               </div>
-              <div className="min-w-0">
-                <p className="text-[13px] font-semibold truncate">Learner</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold truncate">{userName}</p>
                 <p className="text-[11px] text-[var(--color-text3)] truncate">
-                  dev@example.com
+                  {userEmail}
                 </p>
               </div>
-            </div>
+            </button>
             <button
               onClick={handleSignOut}
               className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[15px] font-medium text-[var(--color-red)] hover:bg-[var(--color-red-bg)] transition-colors"
@@ -178,17 +195,25 @@ export function Layout({ children }: { children: ReactNode }) {
             })}
           </div>
           <div className="p-4 border-t border-[var(--color-border)]">
-            <div className="flex items-center gap-3 mb-3 px-3">
+            <button
+              onClick={handleOpenSettings}
+              aria-label="Open settings"
+              className={`flex items-center gap-3 w-full px-3 py-2 mb-2 rounded-lg transition-colors text-left ${
+                location.pathname.startsWith("/settings")
+                  ? "bg-[var(--color-bg)]"
+                  : "hover:bg-[var(--color-bg)]"
+              }`}
+            >
               <div className="w-8 h-8 rounded-full bg-[var(--color-bg2)] flex items-center justify-center shrink-0">
                 <User size={16} className="text-[var(--color-text3)]" />
               </div>
-              <div className="min-w-0">
-                <p className="text-[13px] font-semibold truncate">Learner</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold truncate">{userName}</p>
                 <p className="text-[11px] text-[var(--color-text3)] truncate">
-                  dev@example.com
+                  {userEmail}
                 </p>
               </div>
-            </div>
+            </button>
             <button
               onClick={handleSignOut}
               className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[15px] font-medium text-[var(--color-red)] hover:bg-[var(--color-red-bg)] transition-colors"

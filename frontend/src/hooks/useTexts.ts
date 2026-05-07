@@ -1,8 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import type { Text } from "../types";
+import type { Text, TextContentType } from "../types";
 
 const TEXTS_KEY = ["texts"] as const;
+
+interface TextInput {
+  language_id: string;
+  title: string;
+  content: string;
+  content_type?: TextContentType;
+}
 
 export function useTexts() {
   const queryClient = useQueryClient();
@@ -13,8 +20,7 @@ export function useTexts() {
   });
 
   const createText = useMutation({
-    mutationFn: (text: { language_id: string; title: string; content: string }) =>
-      api.post<Text>("/api/texts", text),
+    mutationFn: (text: TextInput) => api.post<Text>("/api/texts", text),
     onSuccess: (newText) => {
       queryClient.setQueryData<Text[]>(TEXTS_KEY, (prev) =>
         prev ? [newText, ...prev] : [newText],
@@ -28,7 +34,7 @@ export function useTexts() {
       text,
     }: {
       id: string;
-      text: Partial<{ language_id: string; title: string; content: string }>;
+      text: Partial<TextInput>;
     }) => api.put<Text>(`/api/texts/${id}`, text),
     onSuccess: (updated) => {
       queryClient.setQueryData<Text[]>(TEXTS_KEY, (prev) =>
@@ -50,12 +56,9 @@ export function useTexts() {
     texts: query.data ?? [],
     loading: query.isPending,
     error: query.error?.message ?? null,
-    createText: (text: { language_id: string; title: string; content: string }) =>
-      createText(text),
-    updateText: (
-      id: string,
-      text: Partial<{ language_id: string; title: string; content: string }>,
-    ) => updateText({ id, text }),
+    createText: (text: TextInput) => createText(text),
+    updateText: (id: string, text: Partial<TextInput>) =>
+      updateText({ id, text }),
     deleteText,
   };
 }

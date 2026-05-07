@@ -18,6 +18,8 @@ export interface UserLanguageSettings {
   updated_at: string;
 }
 
+export type TextContentType = "plain" | "markdown" | "html";
+
 export interface Text {
   id: string;
   user_id?: string;
@@ -25,6 +27,7 @@ export interface Text {
   language_code: string;
   title: string;
   content: string;
+  content_type: TextContentType;
   created_at: string;
   updated_at: string;
 }

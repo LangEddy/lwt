@@ -68,7 +68,7 @@ export default function DashboardPage() {
             className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-[10px] bg-[var(--color-text)] text-[var(--color-surface)] font-semibold text-[15px] transition-opacity hover:opacity-90"
           >
             <Plus size={18} />
-            Start Reading
+            New Text
           </button>
           <button
             onClick={() => navigate("/learn")}
