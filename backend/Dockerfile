@@ -1,17 +1,26 @@
-FROM rust:1.95-slim-bookworm AS builder
-
-RUN apt-get update && apt-get install -y pkg-config libssl-dev
-
+FROM rust:1.95-slim-bookworm AS chef
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef --locked
 WORKDIR /app
-COPY Cargo.toml ./
+
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+RUN cargo chef prepare --recipe-path recipe.json
 
-RUN cargo build --release
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# Compile dependencies only — this layer is cached as long as recipe.json
+# (i.e. Cargo.toml + Cargo.lock) hasn't changed.
+RUN cargo chef cook --release --recipe-path recipe.json
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+RUN cargo build --release --bin lwt-backend
 
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
-
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/lwt-backend /app/lwt-backend
 
