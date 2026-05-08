@@ -335,6 +335,8 @@ fn mint_token_with(user_id: &str, ttl_secs: i64, kid: &str, issuer: &str) -> Str
         "sub": user_id,
         "email": "test@example.com",
         "role": "authenticated",
+        "user_role": "user",
+        "app_role": "user",
         "iss": issuer,
         "aud": "authenticated",
         "iat": now,

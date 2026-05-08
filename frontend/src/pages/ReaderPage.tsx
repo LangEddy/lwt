@@ -398,9 +398,10 @@ export default function ReaderPage() {
     if (selectedWord) {
       savedWord = await updateWord(selectedWord.id, { level, note });
     } else {
+      const sourceTextId = isTriviaRoute ? undefined : text.id;
       savedWord = await createWord({
         language_id: text.language_id,
-        text_id: text.id,
+        text_id: sourceTextId,
         word: wordText,
         is_phrase: isPhrase || selectedRange.start !== selectedRange.end,
         level,
@@ -433,6 +434,7 @@ export default function ReaderPage() {
     if (!text) return;
     setSweeping(true);
     try {
+      const sourceTextId = isTriviaRoute ? undefined : text.id;
       const uniqueUnseen = new Map<string, string>();
       for (const t of tokenStates) {
         if (t.type === "word" && !t.level) {
@@ -443,7 +445,7 @@ export default function ReaderPage() {
       for (const wordValue of uniqueUnseen.values()) {
         await createWord({
           language_id: text.language_id,
-          text_id: text.id,
+          text_id: sourceTextId,
           word: wordValue,
           is_phrase: false,
           level,

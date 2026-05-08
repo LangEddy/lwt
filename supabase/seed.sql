@@ -1,0 +1,2 @@
+-- Optional seed file for Supabase CLI local resets.
+-- Intentionally empty for now.

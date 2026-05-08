@@ -7,7 +7,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::{
     auth::auth_middleware,
-    handlers::{examples, health::health_check, languages, reviews, texts, trivia, words},
+    handlers::{examples, health::health_check, languages, reviews, roles, texts, trivia, words},
     state::AppState,
 };
 
@@ -21,6 +21,9 @@ pub fn create_router(state: AppState) -> Router {
             "/api/languages/{id}/settings",
             put(languages::update_settings),
         )
+        .route("/api/me/role", get(roles::get_my_role))
+        .route("/api/users/{id}/role", get(roles::get_user_role))
+        .route("/api/users/{id}/role", put(roles::upsert_user_role))
         .route("/api/texts", get(texts::list_texts))
         .route("/api/texts", post(texts::create_text))
         .route("/api/texts/{id}", get(texts::get_text))
