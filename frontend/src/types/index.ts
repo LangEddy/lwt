@@ -1,3 +1,5 @@
+export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
+
 export interface Language {
   id: string;
   code: string;
@@ -5,6 +7,7 @@ export interface Language {
   direction: "ltr" | "rtl";
   is_platform: boolean;
   is_favorite: boolean;
+  target_cefr_levels: CefrLevel[];
   created_at: string;
 }
 
@@ -14,6 +17,7 @@ export interface UserLanguageSettings {
   tts_voice?: string;
   dictionary_url?: string;
   is_favorite: boolean;
+  target_cefr_levels: CefrLevel[];
   created_at: string;
   updated_at: string;
 }
@@ -80,4 +84,37 @@ export interface SpacedRepetition {
   ease_factor: number;
   next_review_at: string;
   last_reviewed_at?: string;
+}
+
+export type TriviaCategory = string;
+
+export interface TriviaCategoryItem {
+  id: string;
+  slug: TriviaCategory;
+  name: string;
+  icon_svg: string;
+  color: string;
+  bg_color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Trivia {
+  id: string;
+  language_id: string;
+  language_code: string;
+  title: string;
+  subtitle?: string;
+  content: string;
+  content_type: TextContentType;
+  category: TriviaCategory;
+  category_name: string;
+  category_icon_svg: string;
+  category_color: string;
+  category_bg_color: string;
+  cefr_level: CefrLevel;
+  direction: "ltr" | "rtl";
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
 }

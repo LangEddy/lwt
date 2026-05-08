@@ -3,7 +3,18 @@ import { useState } from "react";
 import { useLanguageSettings } from "../hooks/useLanguageSettings";
 import { useLanguages } from "../hooks/useLanguages";
 import { useTts } from "../hooks/useTts";
-import type { Language, UserLanguageSettings } from "../types";
+import type { CefrLevel, Language, UserLanguageSettings } from "../types";
+
+const CEFR_LEVELS: CefrLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
+
+const CEFR_STYLE: Record<CefrLevel, { bg: string; text: string }> = {
+  A1: { bg: "oklch(92% 0.06 145)", text: "oklch(35% 0.13 145)" },
+  A2: { bg: "oklch(88% 0.08 145)", text: "oklch(32% 0.14 145)" },
+  B1: { bg: "oklch(92% 0.06 75)", text: "oklch(38% 0.13 75)" },
+  B2: { bg: "oklch(88% 0.08 75)", text: "oklch(35% 0.14 75)" },
+  C1: { bg: "oklch(90% 0.06 25)", text: "oklch(36% 0.14 25)" },
+  C2: { bg: "oklch(86% 0.08 25)", text: "oklch(33% 0.15 25)" },
+};
 
 export default function SettingsPage() {
   const {
@@ -101,6 +112,7 @@ interface LanguageSettingsFormProps {
   onSave: (payload: {
     tts_voice?: string;
     dictionary_url?: string;
+    target_cefr_levels?: CefrLevel[];
   }) => Promise<UserLanguageSettings>;
 }
 
@@ -113,22 +125,43 @@ function LanguageSettingsForm({
   const [dictionaryUrl, setDictionaryUrl] = useState(
     settings?.dictionary_url ?? "",
   );
+  const [targetLevels, setTargetLevels] = useState<CefrLevel[]>(
+    settings?.target_cefr_levels ?? [],
+  );
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { filteredVoices, supported } = useTts(language.code, ttsVoice);
 
+  const normalizedInitialLevels = (settings?.target_cefr_levels ?? [])
+    .slice()
+    .sort();
+  const normalizedTargetLevels = targetLevels.slice().sort();
+
   const hasChanges =
     (settings?.tts_voice ?? "") !== ttsVoice ||
-    (settings?.dictionary_url ?? "") !== dictionaryUrl;
+    (settings?.dictionary_url ?? "") !== dictionaryUrl ||
+    normalizedInitialLevels.join(",") !== normalizedTargetLevels.join(",");
+
+  const toggleLevel = (level: CefrLevel) => {
+    setTargetLevels((prev) =>
+      prev.includes(level)
+        ? prev.filter((candidate) => candidate !== level)
+        : [...prev, level],
+    );
+  };
 
   const handleSave = async () => {
     setSaving(true);
     setSaved(false);
     setError(null);
     try {
-      await onSave({ tts_voice: ttsVoice, dictionary_url: dictionaryUrl });
+      await onSave({
+        tts_voice: ttsVoice,
+        dictionary_url: dictionaryUrl,
+        target_cefr_levels: targetLevels,
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
     } catch (err) {
@@ -176,6 +209,36 @@ function LanguageSettingsForm({
         />
         <p className="text-[12px] text-[var(--color-text3)]">
           Use {"{word}"} where the selected word should be injected.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[13px] font-semibold text-[var(--color-text2)] uppercase tracking-wider">
+          Preferred CEFR Levels For Trivia
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {CEFR_LEVELS.map((level) => {
+            const active = targetLevels.includes(level);
+            const style = CEFR_STYLE[level];
+            return (
+              <button
+                key={level}
+                type="button"
+                onClick={() => toggleLevel(level)}
+                className="px-3 py-1.5 rounded-full border-[1.5px] text-[13px] font-bold transition-colors"
+                style={{
+                  borderColor: active ? style.text : "var(--color-border)",
+                  backgroundColor: active ? style.bg : "var(--color-surface)",
+                  color: active ? style.text : "var(--color-text2)",
+                }}
+              >
+                {level}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[12px] text-[var(--color-text3)]">
+          Used by For me only filter on Trivia.
         </p>
       </div>
 

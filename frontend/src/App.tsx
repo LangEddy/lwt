@@ -9,6 +9,7 @@ import SentencesPage from "./pages/SentencesPage";
 import SettingsPage from "./pages/SettingsPage";
 import TextEditorPage from "./pages/TextEditorPage";
 import TextsPage from "./pages/TextsPage";
+import TriviasPage from "./pages/TriviasPage";
 import WordListPage from "./pages/WordListPage";
 import { useAuthStore } from "./stores/authStore";
 
@@ -52,6 +53,22 @@ function App() {
           element={
             <PrivateRoute>
               <TextsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/trivia"
+          element={
+            <PrivateRoute>
+              <TriviasPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/trivia/:id"
+          element={
+            <PrivateRoute>
+              <ReaderPage />
             </PrivateRoute>
           }
         />

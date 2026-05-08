@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 use crate::{auth::Claims, error::AppError, state::AppState};
 
+const ALLOWED_CEFR_LEVELS: [&str; 6] = ["A1", "A2", "B1", "B2", "C1", "C2"];
+
 #[derive(Debug, FromRow, Serialize)]
 pub struct Language {
     pub id: Uuid,
@@ -27,6 +29,7 @@ pub struct LanguageWithFavorite {
     pub is_platform: bool,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub is_favorite: bool,
+    pub target_cefr_levels: Vec<String>,
 }
 
 #[derive(Debug, FromRow, Serialize)]
@@ -36,6 +39,7 @@ pub struct UserLanguageSetting {
     pub tts_voice: Option<String>,
     pub dictionary_url: Option<String>,
     pub is_favorite: bool,
+    pub target_cefr_levels: Vec<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -45,6 +49,7 @@ pub struct UpdateSettingsRequest {
     pub tts_voice: Option<String>,
     pub dictionary_url: Option<String>,
     pub is_favorite: Option<bool>,
+    pub target_cefr_levels: Option<Vec<String>>,
 }
 
 fn validate_tts_voice(value: &str) -> Result<(), AppError> {
@@ -96,6 +101,27 @@ fn validate_dictionary_url(value: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+fn normalize_target_cefr_levels(values: &[String]) -> Result<Vec<String>, AppError> {
+    let mut normalized: Vec<String> = Vec::new();
+
+    for value in values {
+        let level = value.trim().to_uppercase();
+        if level.is_empty() {
+            continue;
+        }
+        if !ALLOWED_CEFR_LEVELS.contains(&level.as_str()) {
+            return Err(AppError::Validation(format!(
+                "invalid CEFR level: {level}; allowed: A1, A2, B1, B2, C1, C2"
+            )));
+        }
+        if !normalized.iter().any(|v| v == &level) {
+            normalized.push(level);
+        }
+    }
+
+    Ok(normalized)
+}
+
 pub async fn list_languages(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
@@ -111,7 +137,8 @@ pub async fn list_languages(
             l.direction,
             l.is_platform,
             l.created_at,
-            COALESCE(uls.is_favorite, false) as is_favorite
+            COALESCE(uls.is_favorite, false) as is_favorite,
+            COALESCE(uls.target_cefr_levels, '{}'::TEXT[]) as target_cefr_levels
         FROM languages l
         LEFT JOIN user_language_settings uls ON uls.language_id = l.id AND uls.user_id = $1
         ORDER BY COALESCE(uls.is_favorite, false) DESC, l.name ASC
@@ -132,7 +159,7 @@ pub async fn get_settings(
     let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
 
     let settings = sqlx::query_as::<_, UserLanguageSetting>(
-        "SELECT user_id, language_id, tts_voice, dictionary_url, is_favorite, created_at, updated_at FROM user_language_settings WHERE user_id = $1 AND language_id = $2"
+        "SELECT user_id, language_id, tts_voice, dictionary_url, is_favorite, target_cefr_levels, created_at, updated_at FROM user_language_settings WHERE user_id = $1 AND language_id = $2"
     )
     .bind(user_id)
     .bind(language_id)
@@ -147,6 +174,7 @@ pub async fn get_settings(
             tts_voice: None,
             dictionary_url: None,
             is_favorite: false,
+            target_cefr_levels: vec![],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         })),
@@ -167,9 +195,13 @@ pub async fn update_settings(
     if let Some(dictionary_url) = &body.dictionary_url {
         validate_dictionary_url(dictionary_url)?;
     }
+    if let Some(levels) = &body.target_cefr_levels {
+        let _ = normalize_target_cefr_levels(levels)?;
+    }
 
     let tts_voice_provided = body.tts_voice.is_some();
     let dictionary_url_provided = body.dictionary_url.is_some();
+    let target_cefr_levels_provided = body.target_cefr_levels.is_some();
 
     let tts_voice = body
         .tts_voice
@@ -179,9 +211,14 @@ pub async fn update_settings(
         .dictionary_url
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
+    let target_cefr_levels = body
+        .target_cefr_levels
+        .as_ref()
+        .map(|levels| normalize_target_cefr_levels(levels))
+        .transpose()?;
 
     let existing = sqlx::query_as::<_, UserLanguageSetting>(
-        "SELECT user_id, language_id, tts_voice, dictionary_url, is_favorite, created_at, updated_at FROM user_language_settings WHERE user_id = $1 AND language_id = $2"
+        "SELECT user_id, language_id, tts_voice, dictionary_url, is_favorite, target_cefr_levels, created_at, updated_at FROM user_language_settings WHERE user_id = $1 AND language_id = $2"
     )
     .bind(user_id)
     .bind(language_id)
@@ -190,26 +227,29 @@ pub async fn update_settings(
 
     let settings = if let Some(_existing) = existing {
         sqlx::query_as::<_, UserLanguageSetting>(
-            "UPDATE user_language_settings SET tts_voice = CASE WHEN $1 THEN $2 ELSE tts_voice END, dictionary_url = CASE WHEN $3 THEN $4 ELSE dictionary_url END, is_favorite = COALESCE($5, is_favorite), updated_at = NOW() WHERE user_id = $6 AND language_id = $7 RETURNING user_id, language_id, tts_voice, dictionary_url, is_favorite, created_at, updated_at"
+            "UPDATE user_language_settings SET tts_voice = CASE WHEN $1 THEN $2 ELSE tts_voice END, dictionary_url = CASE WHEN $3 THEN $4 ELSE dictionary_url END, is_favorite = COALESCE($5, is_favorite), target_cefr_levels = CASE WHEN $6 THEN $7 ELSE target_cefr_levels END, updated_at = NOW() WHERE user_id = $8 AND language_id = $9 RETURNING user_id, language_id, tts_voice, dictionary_url, is_favorite, target_cefr_levels, created_at, updated_at"
         )
         .bind(tts_voice_provided)
         .bind(tts_voice)
         .bind(dictionary_url_provided)
         .bind(dictionary_url)
         .bind(body.is_favorite)
+        .bind(target_cefr_levels_provided)
+        .bind(target_cefr_levels)
         .bind(user_id)
         .bind(language_id)
         .fetch_one(&state.pool)
         .await?
     } else {
         sqlx::query_as::<_, UserLanguageSetting>(
-            "INSERT INTO user_language_settings (user_id, language_id, tts_voice, dictionary_url, is_favorite) VALUES ($1, $2, $3, $4, $5) RETURNING user_id, language_id, tts_voice, dictionary_url, is_favorite, created_at, updated_at"
+            "INSERT INTO user_language_settings (user_id, language_id, tts_voice, dictionary_url, is_favorite, target_cefr_levels) VALUES ($1, $2, $3, $4, $5, $6) RETURNING user_id, language_id, tts_voice, dictionary_url, is_favorite, target_cefr_levels, created_at, updated_at"
         )
         .bind(user_id)
         .bind(language_id)
         .bind(tts_voice)
         .bind(dictionary_url)
         .bind(body.is_favorite.unwrap_or(false))
+        .bind(target_cefr_levels.unwrap_or_default())
         .fetch_one(&state.pool)
         .await?
     };
@@ -300,6 +340,22 @@ mod tests {
         // After replacing {word} with "example", "https:// /example" doesn't parse.
         assert!(matches!(
             validate_dictionary_url("https:// /{word}"),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn normalize_target_cefr_levels_accepts_valid_values() {
+        let input = vec!["a1".to_string(), "B1".to_string(), "a1".to_string()];
+        let levels = normalize_target_cefr_levels(&input).expect("valid levels");
+        assert_eq!(levels, vec!["A1".to_string(), "B1".to_string()]);
+    }
+
+    #[test]
+    fn normalize_target_cefr_levels_rejects_invalid_value() {
+        let input = vec!["Z9".to_string()];
+        assert!(matches!(
+            normalize_target_cefr_levels(&input),
             Err(AppError::Validation(_))
         ));
     }

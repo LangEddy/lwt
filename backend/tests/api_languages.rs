@@ -32,6 +32,12 @@ async fn list_languages_returns_seeded_set_with_favorite_flag() {
     assert_eq!(langs.len(), 15);
     // No favorites set yet → all false.
     assert!(langs.iter().all(|l| l["is_favorite"] == false));
+    // No CEFR preferences set yet.
+    assert!(langs.iter().all(|l| {
+        l["target_cefr_levels"]
+            .as_array()
+            .is_some_and(|arr| arr.is_empty())
+    }));
 
     cleanup_user(&pool, user.id).await;
 }
@@ -52,6 +58,7 @@ async fn get_settings_returns_defaults_without_inserting() {
     assert_eq!(body["tts_voice"], serde_json::Value::Null);
     assert_eq!(body["dictionary_url"], serde_json::Value::Null);
     assert_eq!(body["is_favorite"], false);
+    assert_eq!(body["target_cefr_levels"], json!([]));
 
     // Confirm no row was inserted.
     let count: (i64,) = sqlx::query_as(
@@ -83,6 +90,7 @@ async fn update_settings_inserts_then_updates() {
                 "tts_voice": "es-ES-Standard-A",
                 "dictionary_url": "https://dict.example.com/?q={word}",
                 "is_favorite": true,
+                "target_cefr_levels": ["A2", "B1"],
             }),
         ),
     )
@@ -90,6 +98,7 @@ async fn update_settings_inserts_then_updates() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["tts_voice"], "es-ES-Standard-A");
     assert_eq!(body["is_favorite"], true);
+    assert_eq!(body["target_cefr_levels"], json!(["A2", "B1"]));
 
     // Update only is_favorite — others should be preserved.
     let (status, body) = send(
@@ -105,6 +114,7 @@ async fn update_settings_inserts_then_updates() {
     assert_eq!(body["is_favorite"], false);
     assert_eq!(body["tts_voice"], "es-ES-Standard-A");
     assert_eq!(body["dictionary_url"], "https://dict.example.com/?q={word}");
+    assert_eq!(body["target_cefr_levels"], json!(["A2", "B1"]));
 
     cleanup_user(&pool, user.id).await;
 }
@@ -154,6 +164,27 @@ async fn update_settings_rejects_invalid_dictionary_url() {
             &format!("/api/languages/{lang}/settings"),
             &user.token,
             json!({ "dictionary_url": "https://dict.example.com/no-placeholder" }),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    cleanup_user(&pool, user.id).await;
+}
+
+#[tokio::test]
+async fn update_settings_rejects_invalid_target_cefr_levels() {
+    let pool = require_db!();
+    let user = new_test_user();
+    let lang = language_id_by_code(&pool, "ja").await;
+    let app = test_router(pool.clone());
+
+    let (status, _) = send(
+        &app,
+        req_put(
+            &format!("/api/languages/{lang}/settings"),
+            &user.token,
+            json!({ "target_cefr_levels": ["Z9"] }),
         ),
     )
     .await;

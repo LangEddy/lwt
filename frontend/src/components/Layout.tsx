@@ -6,6 +6,7 @@ import {
   LogOut,
   Menu,
   MessageSquare,
+  Sparkles,
   User,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -51,6 +52,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const tabs = [
     { id: "/", icon: Home, label: "Home" },
     { id: "/texts", icon: BookOpen, label: "Texts" },
+    { id: "/trivia", icon: Sparkles, label: "Trivia" },
     { id: "/learn", icon: Brain, label: "Learn" },
     { id: "/words", icon: List, label: "Words" },
   ];
@@ -58,13 +60,16 @@ export function Layout({ children }: { children: ReactNode }) {
   const navItems = [
     { id: "/", icon: Home, label: "Dashboard" },
     { id: "/texts", icon: BookOpen, label: "Texts" },
+    { id: "/trivia", icon: Sparkles, label: "Trivia" },
     { id: "/learn", icon: Brain, label: "Learn" },
     { id: "/words", icon: List, label: "Word List" },
     { id: "/sentences", icon: MessageSquare, label: "Sentences" },
   ];
 
   // Hide bottom nav on immersive screens (reader, text editor)
-  const hideBottomNav = location.pathname.startsWith("/texts/");
+  const hideBottomNav =
+    location.pathname.startsWith("/texts/") ||
+    location.pathname.startsWith("/trivia/");
 
   return (
     <div className="h-screen flex flex-col bg-[var(--color-bg)] lg:flex-row">

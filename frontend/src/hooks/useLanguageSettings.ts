@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import type { UserLanguageSettings } from "../types";
+import type { CefrLevel, UserLanguageSettings } from "../types";
 
 interface UpdateLanguageSettingsPayload {
   tts_voice?: string;
   dictionary_url?: string;
   is_favorite?: boolean;
+  target_cefr_levels?: CefrLevel[];
 }
 
 const settingsKey = (languageId?: string) =>

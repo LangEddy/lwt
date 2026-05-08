@@ -1,6 +1,6 @@
 import { ArrowLeft, BookOpen, Paintbrush, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import DictionaryViewer from "../components/DictionaryViewer";
 import WordPopup from "../components/WordPopup";
 import { useDictionary } from "../hooks/useDictionary";
@@ -8,9 +8,13 @@ import { useLanguageSettings } from "../hooks/useLanguageSettings";
 import { useTts } from "../hooks/useTts";
 import { useWords } from "../hooks/useWords";
 import { api } from "../lib/api";
-import { parseContent, stripFormatting, type RichNode } from "../lib/contentParser";
+import {
+  parseContent,
+  stripFormatting,
+  type RichNode,
+} from "../lib/contentParser";
 import { initTokenizer, normalizeWord, tokenize } from "../lib/tokenizer";
-import type { Text, Word, WordLevel } from "../types";
+import type { Text, Trivia, Word, WordLevel } from "../types";
 
 interface TokenState {
   type: "word" | "separator";
@@ -139,7 +143,9 @@ function renderTokenRange(
 export default function ReaderPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [text, setText] = useState<Text | null>(null);
+  const location = useLocation();
+  const isTriviaRoute = location.pathname.startsWith("/trivia/");
+  const [text, setText] = useState<Text | Trivia | null>(null);
   const [textStatus, setTextStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("loading");
@@ -172,9 +178,10 @@ export default function ReaderPage() {
 
   useEffect(() => {
     if (!id) return;
+    const path = isTriviaRoute ? `/api/trivia/${id}` : `/api/texts/${id}`;
     initTokenizer().then(() =>
       api
-        .get<Text>(`/api/texts/${id}`)
+        .get<Text | Trivia>(path)
         .then((data) => {
           setText(data);
           setTextError(null);
@@ -185,13 +192,14 @@ export default function ReaderPage() {
           setTextStatus("error");
         }),
     );
-  }, [id]);
+  }, [id, isTriviaRoute]);
 
   const isTextLoading =
     textStatus === "loading" || (Boolean(id) && text?.id !== id && !textError);
 
   const parsed = useMemo(() => {
-    if (!text) return { tokens: [], tree: [] as RichNode[], chunkOf: [] as number[] };
+    if (!text)
+      return { tokens: [], tree: [] as RichNode[], chunkOf: [] as number[] };
     const { tokens: parsedTokens, tree } = parseContent(
       text.content,
       text.content_type,
@@ -525,17 +533,21 @@ export default function ReaderPage() {
         <BookOpen size={36} />
         <p className="text-[15px]">{textError || "Text not found"}</p>
         <button
-          onClick={() => navigate("/texts")}
+          onClick={() => navigate(isTriviaRoute ? "/trivia" : "/texts")}
           className="px-4 py-2 rounded-[10px] bg-[var(--color-text)] text-[var(--color-surface)] text-[13px] font-semibold"
         >
-          Back to texts
+          Back
         </button>
       </div>
     );
   }
 
   const direction =
-    text.language_code === "ar" || text.language_code === "he" ? "rtl" : "ltr";
+    "direction" in text
+      ? text.direction
+      : text.language_code === "ar" || text.language_code === "he"
+        ? "rtl"
+        : "ltr";
 
   const handleOpenDictionary = (value: string) => {
     const url = buildUrl(value);
@@ -555,7 +567,7 @@ export default function ReaderPage() {
       <div className="shrink-0 px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="max-w-xl mx-auto flex items-center gap-3">
           <button
-            onClick={() => navigate("/texts")}
+            onClick={() => navigate(isTriviaRoute ? "/trivia" : "/texts")}
             className="p-2 rounded-[10px] hover:bg-[var(--color-bg2)] text-[var(--color-text2)] transition-colors shrink-0"
           >
             <ArrowLeft size={20} />
@@ -611,25 +623,29 @@ export default function ReaderPage() {
           </div>
 
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => navigate(`/texts/${text.id}/edit`)}
-              className="p-2 rounded-[10px] hover:bg-[var(--color-bg2)] text-[var(--color-text3)] hover:text-[var(--color-text)] transition-colors"
-              title="Edit text"
-            >
-              <Pencil size={16} />
-            </button>
-            <button
-              onClick={async () => {
-                if (confirm("Delete this text?")) {
-                  await api.delete(`/api/texts/${text.id}`);
-                  navigate("/texts");
-                }
-              }}
-              className="p-2 rounded-[10px] hover:bg-[var(--color-red-bg)] text-[var(--color-text3)] hover:text-[var(--color-red)] transition-colors"
-              title="Delete text"
-            >
-              <Trash2 size={16} />
-            </button>
+            {!isTriviaRoute && (
+              <>
+                <button
+                  onClick={() => navigate(`/texts/${text.id}/edit`)}
+                  className="p-2 rounded-[10px] hover:bg-[var(--color-bg2)] text-[var(--color-text3)] hover:text-[var(--color-text)] transition-colors"
+                  title="Edit text"
+                >
+                  <Pencil size={16} />
+                </button>
+                <button
+                  onClick={async () => {
+                    if (confirm("Delete this text?")) {
+                      await api.delete(`/api/texts/${text.id}`);
+                      navigate("/texts");
+                    }
+                  }}
+                  className="p-2 rounded-[10px] hover:bg-[var(--color-red-bg)] text-[var(--color-text3)] hover:text-[var(--color-red)] transition-colors"
+                  title="Delete text"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </>
+            )}
             <button
               onClick={() => setSweepOpen(true)}
               className="flex items-center gap-1 px-2 py-1.5 rounded-[8px] text-[11px] font-semibold bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text2)] hover:bg-[var(--color-bg2)] transition-colors shrink-0"
@@ -654,7 +670,12 @@ export default function ReaderPage() {
             dir={direction}
             style={{ textAlign: direction === "rtl" ? "right" : "left" }}
           >
-            {renderTokenRange(parsed.tree, tokenStates, selectedRange, handleTokenClick)}
+            {renderTokenRange(
+              parsed.tree,
+              tokenStates,
+              selectedRange,
+              handleTokenClick,
+            )}
           </div>
         </div>
       </div>
@@ -752,9 +773,8 @@ function SweepDialog({
         <div className="px-5 pt-5 pb-3">
           <h2 className="font-bold text-[17px] mb-1">Sweep unseen words</h2>
           <p className="text-[13px] text-[var(--color-text2)] leading-relaxed">
-            Mark all {unseenCount} unseen{" "}
-            {unseenCount === 1 ? "word" : "words"} in this text at the level
-            below.
+            Mark all {unseenCount} unseen {unseenCount === 1 ? "word" : "words"}{" "}
+            in this text at the level below.
           </p>
         </div>
 

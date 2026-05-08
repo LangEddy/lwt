@@ -19,9 +19,7 @@ use jsonwebtoken::{
     },
 };
 use lwt_backend::{router::create_router, state::AppState};
-use rsa::{
-    RsaPrivateKey, RsaPublicKey, pkcs1::EncodeRsaPrivateKey, traits::PublicKeyParts,
-};
+use rsa::{RsaPrivateKey, RsaPublicKey, pkcs1::EncodeRsaPrivateKey, traits::PublicKeyParts};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -99,12 +97,22 @@ pub async fn db_pool() -> Option<PgPool> {
 
 /// Mint a valid token for `user_id` with default 1-hour TTL.
 pub fn mint_token(user_id: &str) -> String {
-    mint_token_with(user_id, 3600, TEST_KID, &format!("{TEST_SUPABASE_URL}/auth/v1"))
+    mint_token_with(
+        user_id,
+        3600,
+        TEST_KID,
+        &format!("{TEST_SUPABASE_URL}/auth/v1"),
+    )
 }
 
 pub fn mint_expired_token(user_id: &str) -> String {
     // Well past jsonwebtoken's default 60s leeway.
-    mint_token_with(user_id, -3600, TEST_KID, &format!("{TEST_SUPABASE_URL}/auth/v1"))
+    mint_token_with(
+        user_id,
+        -3600,
+        TEST_KID,
+        &format!("{TEST_SUPABASE_URL}/auth/v1"),
+    )
 }
 
 pub fn mint_token_with_kid(user_id: &str, kid: &str) -> String {
@@ -229,14 +237,13 @@ pub async fn seed_word(
 }
 
 pub async fn seed_example(pool: &PgPool, word_id: Uuid, sentence: &str) -> Uuid {
-    let (id,): (Uuid,) = sqlx::query_as(
-        "INSERT INTO examples (word_id, sentence) VALUES ($1, $2) RETURNING id",
-    )
-    .bind(word_id)
-    .bind(sentence)
-    .fetch_one(pool)
-    .await
-    .expect("seed example");
+    let (id,): (Uuid,) =
+        sqlx::query_as("INSERT INTO examples (word_id, sentence) VALUES ($1, $2) RETURNING id")
+            .bind(word_id)
+            .bind(sentence)
+            .fetch_one(pool)
+            .await
+            .expect("seed example");
     id
 }
 
@@ -279,6 +286,45 @@ pub async fn seed_text(
     .await
     .expect("seed text");
     id
+}
+
+pub async fn seed_trivia(
+    pool: &PgPool,
+    language_id: Uuid,
+    title: &str,
+    subtitle: Option<&str>,
+    content: &str,
+    category: &str,
+    cefr_level: &str,
+    direction: &str,
+    is_published: bool,
+) -> Uuid {
+    let (id,): (Uuid,) = sqlx::query_as(
+        "INSERT INTO trivias (language_id, category_id, title, subtitle, content, cefr_level, direction, is_published) VALUES ($1, (SELECT id FROM trivia_categories WHERE slug = $2), $3, $4, $5, $6, $7, $8) RETURNING id",
+    )
+    .bind(language_id)
+    .bind(category)
+    .bind(title)
+    .bind(subtitle)
+    .bind(content)
+    .bind(cefr_level)
+    .bind(direction)
+    .bind(is_published)
+    .fetch_one(pool)
+    .await
+    .expect("seed trivia");
+    id
+}
+
+pub async fn cleanup_trivias(pool: &PgPool, ids: &[Uuid]) {
+    if ids.is_empty() {
+        return;
+    }
+
+    let _ = sqlx::query("DELETE FROM trivias WHERE id = ANY($1)")
+        .bind(ids.to_vec())
+        .execute(pool)
+        .await;
 }
 
 fn mint_token_with(user_id: &str, ttl_secs: i64, kid: &str, issuer: &str) -> String {
