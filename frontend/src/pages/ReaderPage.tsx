@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import DictionaryViewer from "../components/DictionaryViewer";
 import WordPopup from "../components/WordPopup";
+import { cacheText, getCachedText, markTextOpened } from "../db/texts";
 import { useDictionary } from "../hooks/useDictionary";
 import { useLanguageSettings } from "../hooks/useLanguageSettings";
 import { useTts } from "../hooks/useTts";
@@ -179,19 +180,49 @@ export default function ReaderPage() {
   useEffect(() => {
     if (!id) return;
     const path = isTriviaRoute ? `/api/trivia/${id}` : `/api/texts/${id}`;
-    initTokenizer().then(() =>
-      api
-        .get<Text | Trivia>(path)
-        .then((data) => {
-          setText(data);
-          setTextError(null);
-          setTextStatus("ready");
-        })
-        .catch((err) => {
-          setTextError(err.message);
-          setTextStatus("error");
-        }),
-    );
+    let cancelled = false;
+
+    setText(null);
+    setTextError(null);
+    setTextStatus("loading");
+
+    const load = async () => {
+      await initTokenizer();
+
+      const cachedText = !isTriviaRoute ? await getCachedText(id) : null;
+      if (cachedText && !cancelled) {
+        setText(cachedText);
+        setTextError(null);
+        setTextStatus("ready");
+        void markTextOpened(cachedText.id);
+      }
+
+      try {
+        const data = await api.get<Text | Trivia>(path);
+        if (cancelled) return;
+
+        setText(data);
+        setTextError(null);
+        setTextStatus("ready");
+
+        if (!isTriviaRoute) {
+          await cacheText(data as Text);
+          void markTextOpened((data as Text).id);
+        }
+      } catch (err) {
+        if (cancelled || cachedText) return;
+        setTextError(
+          err instanceof Error ? err.message : "Failed to load text",
+        );
+        setTextStatus("error");
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id, isTriviaRoute]);
 
   const isTextLoading =

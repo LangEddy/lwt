@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  cacheWord,
+  listCachedWords,
+  removeCachedWord,
+  replaceCachedWords,
+} from "../db/words";
 import { api } from "../lib/api";
 import type { Word, WordLevel } from "../types";
 
@@ -39,19 +45,60 @@ const wordsKey = (languageId?: string | null) =>
 //   string     — fetch words filtered to that language
 export function useWords(languageId?: string | null) {
   const queryClient = useQueryClient();
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const query = useQuery({
     queryKey: wordsKey(languageId),
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (languageId) params.set("language_id", languageId);
-      const q = params.toString();
-      const path = q ? `/api/words?${q}` : "/api/words";
-      return api.get<Word[]>(path);
-    },
+    queryFn: () => listCachedWords(languageId),
     enabled: languageId !== undefined,
     select: dedupeWords,
   });
+
+  useEffect(() => {
+    if (languageId === undefined) return;
+
+    let cancelled = false;
+
+    const refreshWords = async () => {
+      setRefreshing(true);
+
+      try {
+        const params = new URLSearchParams();
+        if (languageId) params.set("language_id", languageId);
+        const q = params.toString();
+        const path = q ? `/api/words?${q}` : "/api/words";
+        const words = await api.get<Word[]>(path);
+
+        await replaceCachedWords(words, languageId);
+        if (cancelled) return;
+        setRefreshError(null);
+        await queryClient.invalidateQueries({ queryKey: ["words"] });
+      } catch (err) {
+        if (cancelled) return;
+        const cachedWords = await listCachedWords(languageId);
+        setRefreshError(
+          cachedWords.length === 0 && err instanceof Error ? err.message : null,
+        );
+      } finally {
+        if (!cancelled) {
+          setRefreshing(false);
+        }
+      }
+    };
+
+    const handleOnline = () => {
+      void refreshWords();
+    };
+
+    void refreshWords();
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [languageId, queryClient]);
 
   const words = useMemo(() => query.data ?? [], [query.data]);
 
@@ -64,10 +111,9 @@ export function useWords(languageId?: string | null) {
       level: WordLevel;
       note?: string;
     }) => api.post<Word>("/api/words", word),
-    onSuccess: (newWord) => {
-      queryClient.setQueryData<Word[]>(wordsKey(languageId), (prev) =>
-        prev ? [...prev, newWord] : [newWord],
-      );
+    onSuccess: async (newWord) => {
+      await cacheWord(newWord);
+      await queryClient.invalidateQueries({ queryKey: ["words"] });
     },
   });
 
@@ -79,19 +125,17 @@ export function useWords(languageId?: string | null) {
       id: string;
       updates: { level?: WordLevel; note?: string };
     }) => api.put<Word>(`/api/words/${id}`, updates),
-    onSuccess: (updated) => {
-      queryClient.setQueryData<Word[]>(wordsKey(languageId), (prev) =>
-        prev?.map((w) => (w.id === updated.id ? updated : w)),
-      );
+    onSuccess: async (updated) => {
+      await cacheWord(updated);
+      await queryClient.invalidateQueries({ queryKey: ["words"] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/api/words/${id}`),
-    onSuccess: (_data, id) => {
-      queryClient.setQueryData<Word[]>(wordsKey(languageId), (prev) =>
-        prev?.filter((w) => w.id !== id),
-      );
+    onSuccess: async (_data, id) => {
+      await removeCachedWord(id);
+      await queryClient.invalidateQueries({ queryKey: ["words"] });
     },
   });
 
@@ -105,8 +149,10 @@ export function useWords(languageId?: string | null) {
 
   return {
     words,
-    loading: query.isPending && languageId !== undefined,
-    error: query.error?.message ?? null,
+    loading:
+      languageId !== undefined &&
+      (query.isPending || (refreshing && (query.data?.length ?? 0) === 0)),
+    error: query.error?.message ?? refreshError,
     createWord: (word: {
       language_id: string;
       text_id?: string;
