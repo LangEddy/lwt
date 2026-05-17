@@ -147,14 +147,16 @@ async fn list_sentences_filters_by_language() {
     seed_example(&pool, en_word, "an english sentence").await;
     seed_example(&pool, de_word, "ein deutscher satz").await;
 
-    let (_, all) = send(&app, req_get("/api/examples", &user.token)).await;
+    let (status, all) = send(&app, req_get("/api/examples", &user.token)).await;
+    assert_eq!(status, StatusCode::OK, "body={all}");
     assert_eq!(all.as_array().unwrap().len(), 2);
 
-    let (_, only_en) = send(
+    let (status, only_en) = send(
         &app,
         req_get(&format!("/api/examples?language_id={en}"), &user.token),
     )
     .await;
+    assert_eq!(status, StatusCode::OK, "body={only_en}");
     let arr = only_en.as_array().unwrap();
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0]["language_code"], "en");
@@ -175,7 +177,8 @@ async fn list_sentences_only_returns_calling_users_rows() {
     seed_example(&pool, alice_word, "alice-sentence").await;
     seed_example(&pool, bob_word, "bob-sentence").await;
 
-    let (_, body) = send(&app, req_get("/api/examples", &alice.token)).await;
+    let (status, body) = send(&app, req_get("/api/examples", &alice.token)).await;
+    assert_eq!(status, StatusCode::OK, "body={body}");
     let sentences: Vec<&str> = body
         .as_array()
         .unwrap()
