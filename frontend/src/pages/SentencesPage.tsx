@@ -13,7 +13,7 @@ import { useSentences } from "../hooks/useSentences";
 import type { SentenceItem } from "../types";
 
 type SortMode =
-  | "next_repetition"
+  | "next_review"
   | "recently_updated"
   | "oldest_first"
   | "word_az"
@@ -30,10 +30,25 @@ function formatNextReview(nextReviewAt: string | null | undefined) {
   return base;
 }
 
+function formatReviewState(state: number | null | undefined) {
+  switch (state) {
+    case 0:
+      return "New";
+    case 1:
+      return "Learning";
+    case 2:
+      return "Review";
+    case 3:
+      return "Relearning";
+    default:
+      return "New";
+  }
+}
+
 export default function SentencesPage() {
   const [search, setSearch] = useState("");
   const [languageFilter, setLanguageFilter] = useState("");
-  const [sortMode, setSortMode] = useState<SortMode>("next_repetition");
+  const [sortMode, setSortMode] = useState<SortMode>("next_review");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTranslation, setDraftTranslation] = useState("");
   const [draftNote, setDraftNote] = useState("");
@@ -66,7 +81,7 @@ export default function SentencesPage() {
       new Date(b).getTime() - new Date(a).getTime();
 
     switch (sortMode) {
-      case "next_repetition":
+      case "next_review":
         return items.sort((a, b) => {
           const aTs = a.next_review_at
             ? new Date(a.next_review_at).getTime()
@@ -173,14 +188,14 @@ export default function SentencesPage() {
               onChange={(e) => setSortMode(e.target.value as SortMode)}
               className="px-2.5 py-1.5 rounded-[8px] border-[1.5px] border-[var(--color-border)] bg-[var(--color-bg)] text-[13px] outline-none focus:border-[var(--color-text)] transition-colors cursor-pointer"
             >
-              <option value="next_repetition">Next repetition</option>
+              <option value="next_review">Next review</option>
               <option value="recently_updated">Recently updated</option>
               <option value="oldest_first">Oldest first</option>
               <option value="word_az">Word A-Z</option>
               <option value="sentence_az">Sentence A-Z</option>
             </select>
             <span className="text-[12px] text-[var(--color-text3)]">
-              Next repetition is read-only
+              Review schedule is read-only
             </span>
           </div>
         </div>
@@ -296,13 +311,28 @@ export default function SentencesPage() {
                       >
                         {item.word}
                       </span>
+                      <span className="px-1.5 py-0.5 rounded-md bg-[var(--color-bg2)] text-[var(--color-text2)] font-semibold">
+                        {formatReviewState(item.state)}
+                      </span>
                       <span className="inline-flex items-center gap-1">
                         <CalendarClock size={12} />
                         {formatNextReview(item.next_review_at)}
                       </span>
-                      {typeof item.repetitions === "number" && (
-                        <span>reps: {item.repetitions}</span>
+                      {typeof item.reps === "number" && (
+                        <span>reviews: {item.reps}</span>
                       )}
+                      {typeof item.lapses === "number" && item.lapses > 0 && (
+                        <span>lapses: {item.lapses}</span>
+                      )}
+                      {typeof item.scheduled_days === "number" &&
+                        item.state === 2 && (
+                          <span>interval: {item.scheduled_days}d</span>
+                        )}
+                      {typeof item.learning_steps === "number" &&
+                        item.learning_steps > 0 &&
+                        item.state !== 2 && (
+                          <span>step: {item.learning_steps}</span>
+                        )}
                     </div>
                     <div className="mt-2 flex items-center gap-1">
                       <button

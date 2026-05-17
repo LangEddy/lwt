@@ -71,7 +71,12 @@ export interface SentenceItem {
   translation?: string;
   note?: string;
   next_review_at?: string | null;
-  repetitions?: number | null;
+  last_reviewed_at?: string | null;
+  state?: number | null;
+  scheduled_days?: number | null;
+  learning_steps?: number | null;
+  reps?: number | null;
+  lapses?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -83,7 +88,14 @@ export interface SpacedRepetition {
   repetitions: number;
   ease_factor: number;
   next_review_at: string;
-  last_reviewed_at?: string;
+  last_reviewed_at?: string | null;
+  stability?: number | null;
+  difficulty?: number | null;
+  state?: number | null;
+  scheduled_days?: number | null;
+  learning_steps?: number | null;
+  reps?: number | null;
+  lapses?: number | null;
 }
 
 export type TriviaCategory = string;

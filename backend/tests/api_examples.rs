@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use chrono::{Duration, Utc};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -185,6 +186,45 @@ async fn list_sentences_only_returns_calling_users_rows() {
 
     cleanup_user(&pool, alice.id).await;
     cleanup_user(&pool, bob.id).await;
+}
+
+#[tokio::test]
+async fn list_sentences_projects_fsrs_native_review_metadata() {
+    let pool = require_db!();
+    let user = new_test_user();
+    let lang = language_id_by_code(&pool, "en").await;
+    let app = test_router(pool.clone());
+
+    let word_id = seed_word(&pool, user.id, lang, "native-review", 1).await;
+    let example_id = seed_example(&pool, word_id, "native review sentence").await;
+
+    sqlx::query(
+        "INSERT INTO spaced_repetition (example_id, interval, repetitions, ease_factor, next_review_at, last_reviewed_at) VALUES ($1, 4, 2, 2.5, $2, $3)",
+    )
+    .bind(example_id)
+    .bind(Utc::now() + Duration::days(4))
+    .bind(Utc::now() - Duration::days(2))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (status, body) = send(&app, req_get("/api/examples", &user.token)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let sentence = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"].as_str() == Some(&example_id.to_string()))
+        .unwrap();
+
+    assert_eq!(sentence["state"], 2);
+    assert_eq!(sentence["scheduled_days"], 4);
+    assert_eq!(sentence["reps"], 2);
+    assert!(sentence["next_review_at"].as_str().is_some());
+    assert!(sentence.get("repetitions").is_none());
+
+    cleanup_user(&pool, user.id).await;
 }
 
 #[tokio::test]

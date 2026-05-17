@@ -1,6 +1,7 @@
 import { Brain, CheckCircle2, Edit3, Eye, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useReviews } from "../hooks/useReviews";
+import { Rating, State, createEmptyCard, fsrs, type Card } from "ts-fsrs";
+import { useReviews, type DueReview } from "../hooks/useReviews";
 
 const BUTTONS = [
   {
@@ -29,31 +30,76 @@ const BUTTONS = [
   },
 ] as const;
 
-function formatIntervalLabel(days: number): string {
-  if (days <= 1) return "1 day";
-  return `${days} days`;
+const scheduler = fsrs();
+
+function pluralize(value: number, unit: string) {
+  return `${value} ${unit}${value === 1 ? "" : "s"}`;
+}
+
+function formatIntervalLabel(nextDue: Date): string {
+  const diffMs = Math.max(nextDue.getTime() - Date.now(), 0);
+  const minutes = Math.round(diffMs / 60_000);
+
+  if (minutes < 1) return "< 1 min";
+  if (minutes < 60) return pluralize(minutes, "min");
+
+  const hours = Math.round(diffMs / 3_600_000);
+  if (hours < 24) return pluralize(hours, "hr");
+
+  const days = Math.round(diffMs / 86_400_000);
+  return pluralize(Math.max(days, 1), "day");
+}
+
+function mapRating(rating: number) {
+  switch (rating) {
+    case 0:
+      return Rating.Again;
+    case 1:
+      return Rating.Hard;
+    case 2:
+      return Rating.Good;
+    case 3:
+      return Rating.Easy;
+    default:
+      return Rating.Good;
+  }
+}
+
+function buildFsrsCard(review?: DueReview): Card {
+  if (
+    !review ||
+    review.stability == null ||
+    review.difficulty == null ||
+    review.state == null ||
+    review.scheduled_days == null ||
+    review.reps == null ||
+    review.lapses == null
+  ) {
+    return createEmptyCard();
+  }
+
+  return {
+    due: review.next_review_at ? new Date(review.next_review_at) : new Date(),
+    stability: review.stability,
+    difficulty: review.difficulty,
+    elapsed_days: review.scheduled_days,
+    scheduled_days: review.scheduled_days,
+    learning_steps: review.learning_steps ?? 0,
+    reps: review.reps,
+    lapses: review.lapses,
+    state: review.state as State,
+    last_review: review.last_reviewed_at
+      ? new Date(review.last_reviewed_at)
+      : undefined,
+  };
 }
 
 function calculateInterval(
-  interval: number | undefined,
-  repetitions: number | undefined,
-  easeFactor: number | undefined,
+  review: DueReview | undefined,
   rating: number,
 ): string {
-  if (rating === 0) return "< 10 min";
-
-  const currentInterval = interval ?? 1;
-  const currentRepetitions = repetitions ?? 0;
-  const currentEaseFactor = easeFactor ?? 2.5;
-
-  const nextInterval =
-    currentRepetitions === 0
-      ? 1
-      : currentRepetitions === 1
-        ? 6
-        : Math.round(currentInterval * currentEaseFactor);
-
-  return formatIntervalLabel(nextInterval);
+  const preview = scheduler.repeat(buildFsrsCard(review), new Date());
+  return formatIntervalLabel(preview[mapRating(rating)].card.due);
 }
 
 export default function LearnPage() {
@@ -183,7 +229,7 @@ export default function LearnPage() {
 
   const handleAnswer = async (rating: number) => {
     if (!current) return;
-    await submitAnswer(current.example_id, rating);
+    await submitAnswer(current, rating);
     setSessionStats((prev) => ({
       ...prev,
       again: prev.again + (rating === 0 ? 1 : 0),
@@ -456,12 +502,7 @@ export default function LearnPage() {
                       className="text-[10px] font-medium"
                       style={{ color: btn.color }}
                     >
-                      {calculateInterval(
-                        current.interval,
-                        current.repetitions,
-                        current.ease_factor,
-                        btn.rating,
-                      )}
+                      {calculateInterval(current, btn.rating)}
                     </span>
                   </button>
                 ))}

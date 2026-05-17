@@ -1,8 +1,50 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import type { SpacedRepetition } from "../types";
 
-export interface DueReview {
+interface ReviewMetadata {
+  next_review_at?: string | null;
+  last_reviewed_at?: string | null;
+  stability?: number | null;
+  difficulty?: number | null;
+  state?: number | null;
+  scheduled_days?: number | null;
+  learning_steps?: number | null;
+  reps?: number | null;
+  lapses?: number | null;
+}
+
+function isCardDue(card: DueReview, now: number) {
+  if (!card.next_review_at) return true;
+
+  const nextReviewAt = new Date(card.next_review_at).getTime();
+  return Number.isNaN(nextReviewAt) || nextReviewAt <= now;
+}
+
+function byNextReview(a: DueReview, b: DueReview) {
+  const aTs = a.next_review_at ? new Date(a.next_review_at).getTime() : 0;
+  const bTs = b.next_review_at ? new Date(b.next_review_at).getTime() : 0;
+  return aTs - bTs;
+}
+
+function mergeAnsweredCard(
+  card: DueReview,
+  response: AnswerResponse,
+): DueReview {
+  return {
+    ...card,
+    next_review_at: response.review.next_review_at ?? undefined,
+    last_reviewed_at: response.review.last_reviewed_at ?? undefined,
+    stability: response.review.stability ?? undefined,
+    difficulty: response.review.difficulty ?? undefined,
+    state: response.review.state ?? undefined,
+    scheduled_days: response.review.scheduled_days ?? undefined,
+    learning_steps: response.review.learning_steps ?? undefined,
+    reps: response.review.reps ?? undefined,
+    lapses: response.review.lapses ?? undefined,
+  };
+}
+
+export interface DueReview extends ReviewMetadata {
   sr_id?: string;
   example_id: string;
   sentence: string;
@@ -14,16 +56,10 @@ export interface DueReview {
   word_note?: string;
   language_code: string;
   language_direction: string;
-  interval?: number;
-  repetitions?: number;
-  ease_factor?: number;
 }
 
 export interface AnswerResponse {
-  sr: SpacedRepetition;
-  interval: number;
-  repetitions: number;
-  ease_factor: number;
+  review: ReviewMetadata;
 }
 
 interface ExampleResponse {
@@ -39,12 +75,21 @@ export function useReviews() {
   const [relearnQueue, setRelearnQueue] = useState<DueReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const activeCards = useMemo(
-    () => [...due, ...relearnQueue],
-    [due, relearnQueue],
+    () =>
+      [...due, ...relearnQueue.filter((card) => isCardDue(card, now))].sort(
+        byNextReview,
+      ),
+    [due, relearnQueue, now],
   );
-  const totalCards = due.length + relearnQueue.length;
+  const totalCards = activeCards.length;
 
   const fetchDue = useCallback(() => {
     setLoading(true);
@@ -60,33 +105,22 @@ export function useReviews() {
   }, []);
 
   const submitAnswer = useCallback(
-    async (exampleId: string, rating: number): Promise<AnswerResponse> => {
+    async (card: DueReview, rating: number): Promise<AnswerResponse> => {
       const res = await api.post<AnswerResponse>(
-        `/api/reviews/${exampleId}/answer`,
+        `/api/reviews/${card.example_id}/answer`,
         { rating },
       );
+      const nextCard = mergeAnsweredCard(card, res);
+      setNow(Date.now());
 
-      // Remove from due if present; if Again, add to relearn queue
-      setDue((prev) => {
-        const card = prev.find((r) => r.example_id === exampleId);
-        if (card && rating === 0) {
-          setRelearnQueue((qPrev) => {
-            if (qPrev.some((r) => r.example_id === exampleId)) return qPrev;
-            return [...qPrev, card];
-          });
-        }
-        return prev.filter((r) => r.example_id !== exampleId);
-      });
+      setDue((prev) => prev.filter((r) => r.example_id !== card.example_id));
 
-      // Handle relearn queue: Again → move to end; Hard/Good/Easy → remove
       setRelearnQueue((prev) => {
-        const inQueue = prev.some((r) => r.example_id === exampleId);
-        if (!inQueue) return prev;
+        const filtered = prev.filter((r) => r.example_id !== card.example_id);
         if (rating === 0) {
-          const card = prev.find((r) => r.example_id === exampleId)!;
-          return [...prev.filter((r) => r.example_id !== exampleId), card];
+          return [...filtered, nextCard].sort(byNextReview);
         }
-        return prev.filter((r) => r.example_id !== exampleId);
+        return filtered;
       });
 
       return res;

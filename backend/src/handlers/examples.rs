@@ -31,7 +31,12 @@ pub struct SentenceItem {
     pub translation: Option<String>,
     pub note: Option<String>,
     pub next_review_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub repetitions: Option<i32>,
+    pub last_reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub state: Option<i16>,
+    pub scheduled_days: Option<i32>,
+    pub learning_steps: Option<i32>,
+    pub reps: Option<i32>,
+    pub lapses: Option<i32>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -103,7 +108,19 @@ pub async fn list_sentences(
                 e.translation,
                 e.note,
                 sr.next_review_at,
-                sr.repetitions,
+                sr.last_reviewed_at,
+                COALESCE(
+                    sr.state,
+                    CASE
+                        WHEN sr.example_id IS NULL THEN NULL
+                        WHEN COALESCE(sr.reps, sr.repetitions, 0) > 0 THEN 2::SMALLINT
+                        ELSE 1::SMALLINT
+                    END
+                ) AS state,
+                COALESCE(sr.scheduled_days, sr.interval) AS scheduled_days,
+                sr.learning_steps,
+                COALESCE(sr.reps, sr.repetitions) AS reps,
+                sr.lapses,
                 e.created_at,
                 e.updated_at
             FROM examples e
@@ -132,7 +149,19 @@ pub async fn list_sentences(
                 e.translation,
                 e.note,
                 sr.next_review_at,
-                sr.repetitions,
+                sr.last_reviewed_at,
+                COALESCE(
+                    sr.state,
+                    CASE
+                        WHEN sr.example_id IS NULL THEN NULL
+                        WHEN COALESCE(sr.reps, sr.repetitions, 0) > 0 THEN 2::SMALLINT
+                        ELSE 1::SMALLINT
+                    END
+                ) AS state,
+                COALESCE(sr.scheduled_days, sr.interval) AS scheduled_days,
+                sr.learning_steps,
+                COALESCE(sr.reps, sr.repetitions) AS reps,
+                sr.lapses,
                 e.created_at,
                 e.updated_at
             FROM examples e

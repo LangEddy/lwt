@@ -37,6 +37,9 @@ async fn list_due_includes_examples_without_sr_row() {
     assert_eq!(arr.len(), 1);
     assert_eq!(arr[0]["example_id"], example_id.to_string());
     assert_eq!(arr[0]["sr_id"], serde_json::Value::Null);
+    assert!(arr[0].get("interval").is_none());
+    assert!(arr[0].get("repetitions").is_none());
+    assert!(arr[0].get("ease_factor").is_none());
 
     cleanup_user(&pool, user.id).await;
 }
@@ -100,6 +103,47 @@ async fn list_due_is_scoped_to_calling_user() {
 }
 
 #[tokio::test]
+async fn list_due_projects_native_review_metadata_for_legacy_rows() {
+    let pool = require_db!();
+    let user = new_test_user();
+    let lang = language_id_by_code(&pool, "en").await;
+    let app = test_router(pool.clone());
+    let word_id = seed_word(&pool, user.id, lang, "legacy-due", 1).await;
+    let example_id = seed_example(&pool, word_id, "legacy due row").await;
+
+    sqlx::query(
+        "INSERT INTO spaced_repetition (example_id, interval, repetitions, ease_factor, next_review_at, last_reviewed_at) VALUES ($1, 6, 2, 2.5, $2, $3)",
+    )
+    .bind(example_id)
+    .bind(Utc::now() - Duration::days(1))
+    .bind(Utc::now() - Duration::days(6))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (status, body) = send(&app, req_get("/api/reviews/due", &user.token)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let item = body
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|review| review["example_id"].as_str() == Some(&example_id.to_string()))
+        .unwrap();
+
+    assert!(item["stability"].as_f64().unwrap_or_default().is_finite());
+    assert!(item["difficulty"].as_f64().unwrap_or_default().is_finite());
+    assert_eq!(item["state"], 2);
+    assert_eq!(item["scheduled_days"], 6);
+    assert_eq!(item["reps"], 2);
+    assert!(item.get("interval").is_none());
+    assert!(item.get("repetitions").is_none());
+    assert!(item.get("ease_factor").is_none());
+
+    cleanup_user(&pool, user.id).await;
+}
+
+#[tokio::test]
 async fn submit_answer_creates_sr_row_on_first_review() {
     let pool = require_db!();
     let user = new_test_user();
@@ -118,16 +162,30 @@ async fn submit_answer_creates_sr_row_on_first_review() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["repetitions"], 1);
-    assert_eq!(body["interval"], 1);
+    assert!(
+        body["review"]["stability"]
+            .as_f64()
+            .unwrap_or_default()
+            .is_finite()
+    );
+    assert!(
+        body["review"]["difficulty"]
+            .as_f64()
+            .unwrap_or_default()
+            .is_finite()
+    );
+    assert_eq!(body["review"]["reps"], 1);
+    assert_eq!(body["review"]["lapses"], 0);
+    assert!(body.get("interval").is_none());
+    assert!(body.get("repetitions").is_none());
+    assert!(body.get("ease_factor").is_none());
 
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM spaced_repetition WHERE example_id = $1",
-    )
-    .bind(example_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM spaced_repetition WHERE example_id = $1")
+            .bind(example_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count.0, 1);
 
     cleanup_user(&pool, user.id).await;
@@ -152,6 +210,13 @@ async fn submit_answer_updates_existing_sr_row() {
         ),
     )
     .await;
+    let (first_due,): (chrono::DateTime<Utc>,) =
+        sqlx::query_as("SELECT next_review_at FROM spaced_repetition WHERE example_id = $1")
+            .bind(example_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
     // Second answer should update, not duplicate.
     let (status, body) = send(
         &app,
@@ -163,16 +228,27 @@ async fn submit_answer_updates_existing_sr_row() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["repetitions"], 2);
-    assert_eq!(body["interval"], 6);
+    assert_eq!(body["review"]["reps"], 2);
+    assert!(
+        body["review"]["scheduled_days"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
 
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM spaced_repetition WHERE example_id = $1",
-    )
-    .bind(example_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let second_due: chrono::DateTime<Utc> =
+        serde_json::from_value(body["review"]["next_review_at"].clone()).unwrap();
+    assert!(second_due >= first_due);
+    assert!(body.get("interval").is_none());
+    assert!(body.get("repetitions").is_none());
+    assert!(body.get("ease_factor").is_none());
+
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM spaced_repetition WHERE example_id = $1")
+            .bind(example_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(count.0, 1);
 
     cleanup_user(&pool, user.id).await;
@@ -199,11 +275,66 @@ async fn submit_answer_again_schedules_within_minutes() {
     assert_eq!(status, StatusCode::OK);
 
     let next: chrono::DateTime<Utc> =
-        serde_json::from_value(body["sr"]["next_review_at"].clone()).unwrap();
+        serde_json::from_value(body["review"]["next_review_at"].clone()).unwrap();
     let delta = next - Utc::now();
-    // 10 minutes ± slack for clock + DB round-trip.
-    assert!(delta < Duration::minutes(15));
-    assert!(delta > Duration::minutes(5));
+    assert!(delta > Duration::zero());
+    assert!(delta < Duration::days(1));
+    assert_eq!(body["review"]["reps"], 1);
+    assert_eq!(body["review"]["lapses"], 1);
+    assert_eq!(body["review"]["state"], 1);
+
+    cleanup_user(&pool, user.id).await;
+}
+
+#[tokio::test]
+async fn submit_answer_migrates_legacy_sm2_row_to_fsrs_state() {
+    let pool = require_db!();
+    let user = new_test_user();
+    let lang = language_id_by_code(&pool, "en").await;
+    let app = test_router(pool.clone());
+    let word_id = seed_word(&pool, user.id, lang, "legacy", 1).await;
+    let example_id = seed_example(&pool, word_id, "legacy review row").await;
+
+    sqlx::query(
+        "INSERT INTO spaced_repetition (example_id, interval, repetitions, ease_factor, next_review_at, last_reviewed_at) VALUES ($1, 10, 4, 2.5, $2, $3)"
+    )
+    .bind(example_id)
+    .bind(Utc::now() - Duration::days(1))
+    .bind(Utc::now() - Duration::days(10))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (status, body) = send(
+        &app,
+        req_post(
+            &format!("/api/reviews/{example_id}/answer"),
+            &user.token,
+            json!({ "rating": 2 }),
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body["review"]["stability"]
+            .as_f64()
+            .unwrap_or_default()
+            .is_finite()
+    );
+    assert!(
+        body["review"]["difficulty"]
+            .as_f64()
+            .unwrap_or_default()
+            .is_finite()
+    );
+    assert_eq!(body["review"]["reps"], 5);
+    assert!(
+        body["review"]["scheduled_days"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
 
     cleanup_user(&pool, user.id).await;
 }
