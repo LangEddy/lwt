@@ -7,7 +7,14 @@ import {
   replaceCachedWords,
 } from "../db/words";
 import { api } from "../lib/api";
-import type { Word, WordLevel } from "../types";
+import {
+  createWordOfflineFirst,
+  deleteWordOfflineFirst,
+  updateWordOfflineFirst,
+  type WordInput,
+  type WordUpdates,
+} from "../lib/offlineSync";
+import type { Word } from "../types";
 
 function normalizeWordKey(value: string) {
   return value.trim().replace(/\s+/g, " ").toLowerCase().normalize("NFC");
@@ -103,14 +110,7 @@ export function useWords(languageId?: string | null) {
   const words = useMemo(() => query.data ?? [], [query.data]);
 
   const createMutation = useMutation({
-    mutationFn: (word: {
-      language_id: string;
-      text_id?: string;
-      word: string;
-      is_phrase: boolean;
-      level: WordLevel;
-      note?: string;
-    }) => api.post<Word>("/api/words", word),
+    mutationFn: (word: WordInput) => createWordOfflineFirst(word),
     onSuccess: async (newWord) => {
       await cacheWord(newWord);
       await queryClient.invalidateQueries({ queryKey: ["words"] });
@@ -118,13 +118,8 @@ export function useWords(languageId?: string | null) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({
-      id,
-      updates,
-    }: {
-      id: string;
-      updates: { level?: WordLevel; note?: string };
-    }) => api.put<Word>(`/api/words/${id}`, updates),
+    mutationFn: ({ id, updates }: { id: string; updates: WordUpdates }) =>
+      updateWordOfflineFirst(id, updates),
     onSuccess: async (updated) => {
       await cacheWord(updated);
       await queryClient.invalidateQueries({ queryKey: ["words"] });
@@ -132,7 +127,7 @@ export function useWords(languageId?: string | null) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/words/${id}`),
+    mutationFn: deleteWordOfflineFirst,
     onSuccess: async (_data, id) => {
       await removeCachedWord(id);
       await queryClient.invalidateQueries({ queryKey: ["words"] });
@@ -153,15 +148,8 @@ export function useWords(languageId?: string | null) {
       languageId !== undefined &&
       (query.isPending || (refreshing && (query.data?.length ?? 0) === 0)),
     error: query.error?.message ?? refreshError,
-    createWord: (word: {
-      language_id: string;
-      text_id?: string;
-      word: string;
-      is_phrase: boolean;
-      level: WordLevel;
-      note?: string;
-    }) => createMutation.mutateAsync(word),
-    updateWord: (id: string, updates: { level?: WordLevel; note?: string }) =>
+    createWord: (word: WordInput) => createMutation.mutateAsync(word),
+    updateWord: (id: string, updates: WordUpdates) =>
       updateMutation.mutateAsync({ id, updates }),
     deleteWord: (id: string) => deleteMutation.mutateAsync(id),
     getWordByText,

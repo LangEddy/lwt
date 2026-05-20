@@ -14,6 +14,10 @@ import {
   stripFormatting,
   type RichNode,
 } from "../lib/contentParser";
+import {
+  createExampleOfflineFirst,
+  deleteTextOfflineFirst,
+} from "../lib/offlineSync";
 import { initTokenizer, normalizeWord, tokenize } from "../lib/tokenizer";
 import type { Text, Trivia, Word, WordLevel } from "../types";
 
@@ -442,7 +446,7 @@ export default function ReaderPage() {
 
     const sentence = stripFormatting(pendingExample?.sentence ?? "");
     if (sentence) {
-      await api.post(`/api/words/${savedWord.id}/examples`, {
+      await createExampleOfflineFirst(savedWord.id, {
         sentence,
         translation:
           stripFormatting(pendingExample?.translation ?? "") || undefined,
@@ -668,7 +672,7 @@ export default function ReaderPage() {
                 <button
                   onClick={async () => {
                     if (confirm("Delete this text?")) {
-                      await api.delete(`/api/texts/${text.id}`);
+                      await deleteTextOfflineFirst(text.id);
                       navigate("/texts");
                     }
                   }}

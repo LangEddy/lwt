@@ -96,6 +96,7 @@ struct DueReviewRow {
 #[derive(Debug, Deserialize)]
 pub struct AnswerRequest {
     pub rating: i32, // 0=again, 1=hard, 2=good, 3=easy
+    pub answered_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -491,6 +492,14 @@ pub async fn submit_answer(
         return Err(AppError::Validation("rating must be 0, 1, 2, or 3".into()));
     }
 
+    let server_now = Utc::now();
+    let now = body.answered_at.unwrap_or(server_now);
+    if now > server_now + Duration::minutes(5) {
+        return Err(AppError::Validation(
+            "answered_at cannot be in the future".into(),
+        ));
+    }
+
     // Verify example ownership
     let word_owner: Option<(Uuid,)> = sqlx::query_as(
         "SELECT w.user_id FROM examples e JOIN words w ON e.word_id = w.id WHERE e.id = $1",
@@ -512,7 +521,6 @@ pub async fn submit_answer(
     .fetch_optional(&state.pool)
     .await?;
 
-    let now = Utc::now();
     let current_state = review_state_from_existing(existing.as_ref())?;
     let next_state = next_fsrs_state(current_state, body.rating, now)?;
 

@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { cacheExamples, listCachedSentenceItems } from "../db/examples";
+import { cacheSentenceReviewStates } from "../db/reviews";
 import { api } from "../lib/api";
-import type { Example, SentenceItem } from "../types";
+import {
+  deleteExampleOfflineFirst,
+  type ExampleUpdates,
+  updateExampleOfflineFirst,
+} from "../lib/offlineSync";
+import type { SentenceItem } from "../types";
 
 interface UpdateSentenceRequest {
   translation?: string;
@@ -12,17 +20,70 @@ const sentencesKey = (languageId?: string | null) =>
 
 export function useSentences(languageId?: string | null) {
   const queryClient = useQueryClient();
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const query = useQuery({
     queryKey: sentencesKey(languageId),
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (languageId) params.set("language_id", languageId);
-      const query = params.toString();
-      const path = query ? `/api/examples?${query}` : "/api/examples";
-      return api.get<SentenceItem[]>(path);
-    },
+    queryFn: () => listCachedSentenceItems(languageId),
   });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshSentences = async () => {
+      setRefreshing(true);
+
+      try {
+        const params = new URLSearchParams();
+        if (languageId) params.set("language_id", languageId);
+        const queryString = params.toString();
+        const path = queryString
+          ? `/api/examples?${queryString}`
+          : "/api/examples";
+        const data = await api.get<SentenceItem[]>(path);
+
+        await cacheExamples(
+          data.map((item) => ({
+            id: item.id,
+            word_id: item.word_id,
+            sentence: item.sentence,
+            translation: item.translation,
+            note: item.note,
+            created_at: item.created_at,
+            updated_at: item.updated_at,
+          })),
+        );
+        await cacheSentenceReviewStates(data);
+
+        if (cancelled) return;
+        queryClient.setQueryData(sentencesKey(languageId), data);
+        setRefreshError(null);
+      } catch (err) {
+        if (cancelled) return;
+        const cached = await listCachedSentenceItems(languageId);
+        setRefreshError(
+          cached.length === 0 && err instanceof Error ? err.message : null,
+        );
+      } finally {
+        if (!cancelled) {
+          setRefreshing(false);
+        }
+      }
+    };
+
+    const handleOnline = () => {
+      void refreshSentences();
+    };
+
+    void refreshSentences();
+    window.addEventListener("online", handleOnline);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [languageId, queryClient]);
 
   const updateSentenceMutation = useMutation({
     mutationFn: ({
@@ -31,7 +92,7 @@ export function useSentences(languageId?: string | null) {
     }: {
       id: string;
       updates: UpdateSentenceRequest;
-    }) => api.put<Example>(`/api/examples/${id}`, updates),
+    }) => updateExampleOfflineFirst(id, updates as ExampleUpdates),
     onSuccess: (updated, { id }) => {
       queryClient.setQueryData<SentenceItem[]>(
         sentencesKey(languageId),
@@ -44,7 +105,7 @@ export function useSentences(languageId?: string | null) {
   });
 
   const deleteSentenceMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/examples/${id}`),
+    mutationFn: deleteExampleOfflineFirst,
     onSuccess: (_data, id) => {
       queryClient.setQueryData<SentenceItem[]>(
         sentencesKey(languageId),
@@ -55,8 +116,8 @@ export function useSentences(languageId?: string | null) {
 
   return {
     sentences: query.data ?? [],
-    loading: query.isPending,
-    error: query.error?.message ?? null,
+    loading: query.isPending || (refreshing && (query.data?.length ?? 0) === 0),
+    error: query.error?.message ?? refreshError,
     updateSentence: (id: string, updates: UpdateSentenceRequest) =>
       updateSentenceMutation.mutateAsync({ id, updates }),
     deleteSentence: (id: string) => deleteSentenceMutation.mutateAsync(id),

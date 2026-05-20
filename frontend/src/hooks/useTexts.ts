@@ -7,16 +7,15 @@ import {
   replaceCachedTexts,
 } from "../db/texts";
 import { api } from "../lib/api";
-import type { Text, TextContentType } from "../types";
+import {
+  createTextOfflineFirst,
+  deleteTextOfflineFirst,
+  type TextInput,
+  updateTextOfflineFirst,
+} from "../lib/offlineSync";
+import type { Text } from "../types";
 
 const TEXTS_KEY = ["texts"] as const;
-
-interface TextInput {
-  language_id: string;
-  title: string;
-  content: string;
-  content_type?: TextContentType;
-}
 
 export function useTexts() {
   const queryClient = useQueryClient();
@@ -66,7 +65,7 @@ export function useTexts() {
   }, [queryClient]);
 
   const createText = useMutation({
-    mutationFn: (text: TextInput) => api.post<Text>("/api/texts", text),
+    mutationFn: createTextOfflineFirst,
     onSuccess: async (newText) => {
       await cacheText(newText);
       queryClient.setQueryData<Text[]>(TEXTS_KEY, (prev) => {
@@ -78,7 +77,7 @@ export function useTexts() {
 
   const updateText = useMutation({
     mutationFn: ({ id, text }: { id: string; text: Partial<TextInput> }) =>
-      api.put<Text>(`/api/texts/${id}`, text),
+      updateTextOfflineFirst(id, text),
     onSuccess: async (updated) => {
       await cacheText(updated);
       queryClient.setQueryData<Text[]>(TEXTS_KEY, (prev) =>
@@ -88,7 +87,7 @@ export function useTexts() {
   }).mutateAsync;
 
   const deleteText = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/texts/${id}`),
+    mutationFn: deleteTextOfflineFirst,
     onSuccess: async (_data, id) => {
       await removeCachedText(id);
       queryClient.setQueryData<Text[]>(TEXTS_KEY, (prev) =>

@@ -7,12 +7,20 @@ type LocalWord = Word;
 type LocalExample = Example;
 type LocalSpacedRepetition = SpacedRepetition;
 
+type SyncEntity = "text" | "word" | "example" | "language" | "review";
+type SyncOperation = "create" | "update" | "delete";
+type SyncStatus = "pending" | "syncing" | "failed";
+
 interface SyncRecord {
-  id: string; // compound: "table:record_id"
-  table: string;
+  id: string; // compound: "entity:record_id"
+  entity: SyncEntity;
   record_id: string;
-  status: "clean" | "dirty" | "deleted";
+  operation: SyncOperation;
+  status: SyncStatus;
+  payload?: unknown;
+  parent_record_id?: string;
   modified_at: number;
+  error?: string;
 }
 
 interface LocalTextState {
@@ -51,5 +59,21 @@ db.version(2).stores({
   textState: "text_id, last_opened_at, last_synced_at, is_pinned",
 });
 
+db.version(3).stores({
+  languages: "id, code, is_favorite",
+  texts: "id, user_id, language_id, updated_at",
+  words: "id, user_id, language_id, text_id, level, updated_at",
+  examples: "id, word_id, updated_at",
+  spacedRepetition: "id, example_id, next_review_at",
+  sync: "id, status, modified_at, entity, record_id, operation, parent_record_id",
+  textState: "text_id, last_opened_at, last_synced_at, is_pinned",
+});
+
 export { db };
-export type { LocalTextState, SyncRecord };
+export type {
+  LocalTextState,
+  SyncEntity,
+  SyncOperation,
+  SyncRecord,
+  SyncStatus,
+};

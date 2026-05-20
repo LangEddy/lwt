@@ -25,6 +25,7 @@ pub struct Example {
 
 #[derive(Debug, FromRow, Serialize)]
 pub struct SentenceItem {
+    pub sr_id: Option<Uuid>,
     pub id: Uuid,
     pub word_id: Uuid,
     pub word: String,
@@ -35,6 +36,8 @@ pub struct SentenceItem {
     pub note: Option<String>,
     pub next_review_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_reviewed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub stability: Option<f32>,
+    pub difficulty: Option<f32>,
     pub state: Option<i16>,
     pub scheduled_days: Option<i32>,
     pub learning_steps: Option<i32>,
@@ -111,6 +114,7 @@ impl TryFrom<LegacySentenceItemRow> for SentenceItem {
         };
 
         Ok(SentenceItem {
+            sr_id: None,
             id: row.id,
             word_id: row.word_id,
             word: row.word,
@@ -121,6 +125,8 @@ impl TryFrom<LegacySentenceItemRow> for SentenceItem {
             note: row.note,
             next_review_at: row.next_review_at,
             last_reviewed_at: row.last_reviewed_at,
+            stability: None,
+            difficulty: None,
             state,
             scheduled_days: row.interval.map(|interval| interval.max(1)),
             learning_steps: state.map(|state| if state == REVIEW_STATE_REVIEW { 0 } else { 1 }),
@@ -171,6 +177,7 @@ pub async fn list_sentences(
         match sqlx::query_as::<_, SentenceItem>(
             r#"
             SELECT
+                sr.id as sr_id,
                 e.id,
                 e.word_id,
                 w.word,
@@ -181,6 +188,8 @@ pub async fn list_sentences(
                 e.note,
                 sr.next_review_at,
                 sr.last_reviewed_at,
+                sr.stability,
+                sr.difficulty,
                 COALESCE(
                     sr.state,
                     CASE
@@ -252,6 +261,7 @@ pub async fn list_sentences(
         match sqlx::query_as::<_, SentenceItem>(
             r#"
             SELECT
+                sr.id as sr_id,
                 e.id,
                 e.word_id,
                 w.word,
@@ -262,6 +272,8 @@ pub async fn list_sentences(
                 e.note,
                 sr.next_review_at,
                 sr.last_reviewed_at,
+                sr.stability,
+                sr.difficulty,
                 COALESCE(
                     sr.state,
                     CASE

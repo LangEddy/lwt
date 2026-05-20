@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import WordPopup from "../components/WordPopup";
 import { useLanguages } from "../hooks/useLanguages";
 import { useWords } from "../hooks/useWords";
-import { api } from "../lib/api";
+import { createExampleOfflineFirst } from "../lib/offlineSync";
 import type { Word, WordLevel } from "../types";
 
 const LEVEL_FILTER: { value: WordLevel | null; label: string }[] = [
@@ -72,7 +72,7 @@ export default function WordListPage() {
 
     const sentence = pendingExample?.sentence?.trim();
     if (sentence) {
-      await api.post(`/api/words/${selectedWord.id}/examples`, {
+      await createExampleOfflineFirst(selectedWord.id, {
         sentence,
         translation: pendingExample?.translation?.trim() || undefined,
         note: pendingExample?.note?.trim() || undefined,

@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { cacheDueReviews, listCachedDueReviews } from "../db/reviews";
 import { api } from "../lib/api";
+import {
+  deleteExampleOfflineFirst,
+  submitReviewAnswerOfflineFirst,
+  updateExampleOfflineFirst,
+} from "../lib/offlineSync";
+import type { DueReview, ReviewMetadata } from "../types";
 
-interface ReviewMetadata {
-  next_review_at?: string | null;
-  last_reviewed_at?: string | null;
-  stability?: number | null;
-  difficulty?: number | null;
-  state?: number | null;
-  scheduled_days?: number | null;
-  learning_steps?: number | null;
-  reps?: number | null;
-  lapses?: number | null;
-}
+export type { DueReview } from "../types";
 
 function isCardDue(card: DueReview, now: number) {
   if (!card.next_review_at) return true;
@@ -44,30 +41,8 @@ function mergeAnsweredCard(
   };
 }
 
-export interface DueReview extends ReviewMetadata {
-  sr_id?: string;
-  example_id: string;
-  sentence: string;
-  translation?: string;
-  example_note?: string;
-  word_id: string;
-  word: string;
-  word_level: number;
-  word_note?: string;
-  language_code: string;
-  language_direction: string;
-}
-
 export interface AnswerResponse {
   review: ReviewMetadata;
-}
-
-interface ExampleResponse {
-  translation?: string | null;
-}
-
-interface DeleteExampleResponse {
-  deleted: boolean;
 }
 
 export function useReviews() {
@@ -91,25 +66,50 @@ export function useReviews() {
   );
   const totalCards = activeCards.length;
 
-  const fetchDue = useCallback(() => {
+  const fetchDue = useCallback(async () => {
     setLoading(true);
-    api
-      .get<DueReview[]>("/api/reviews/due")
-      .then((data) => {
-        setDue(data);
-        setRelearnQueue([]);
-        setError(null);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
+
+    try {
+      const cached = await listCachedDueReviews();
+      setDue(cached);
+      setRelearnQueue([]);
+      setError(null);
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return;
+      }
+
+      const data = await api.get<DueReview[]>("/api/reviews/due");
+      const nextDue = await cacheDueReviews(data);
+      setDue(nextDue);
+      setRelearnQueue([]);
+      setError(null);
+    } catch (err) {
+      const cached = await listCachedDueReviews();
+      setDue(cached);
+      setRelearnQueue([]);
+      setError(
+        cached.length === 0 && err instanceof Error ? err.message : null,
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchDue();
+
+    const handleOnline = () => {
+      void fetchDue();
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [fetchDue]);
 
   const submitAnswer = useCallback(
     async (card: DueReview, rating: number): Promise<AnswerResponse> => {
-      const res = await api.post<AnswerResponse>(
-        `/api/reviews/${card.example_id}/answer`,
-        { rating },
-      );
+      const res = await submitReviewAnswerOfflineFirst(card, rating);
       const nextCard = mergeAnsweredCard(card, res);
       setNow(Date.now());
 
@@ -130,12 +130,9 @@ export function useReviews() {
 
   const updateCardTranslation = useCallback(
     async (exampleId: string, translation: string) => {
-      const updated = await api.put<ExampleResponse>(
-        `/api/examples/${exampleId}`,
-        {
-          translation,
-        },
-      );
+      const updated = await updateExampleOfflineFirst(exampleId, {
+        translation,
+      });
 
       const nextTranslation = updated.translation?.trim() || undefined;
       const applyTranslation = (cards: DueReview[]) =>
@@ -154,7 +151,7 @@ export function useReviews() {
   );
 
   const removeCardExample = useCallback(async (exampleId: string) => {
-    await api.delete<DeleteExampleResponse>(`/api/examples/${exampleId}`);
+    await deleteExampleOfflineFirst(exampleId);
 
     const withoutExample = (cards: DueReview[]) =>
       cards.filter((card) => card.example_id !== exampleId);

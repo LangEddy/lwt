@@ -61,7 +61,20 @@ export interface Example {
   updated_at: string;
 }
 
-export interface SentenceItem {
+export interface ReviewMetadata {
+  next_review_at?: string | null;
+  last_reviewed_at?: string | null;
+  stability?: number | null;
+  difficulty?: number | null;
+  state?: number | null;
+  scheduled_days?: number | null;
+  learning_steps?: number | null;
+  reps?: number | null;
+  lapses?: number | null;
+}
+
+export interface SentenceItem extends ReviewMetadata {
+  sr_id?: string | null;
   id: string;
   word_id: string;
   word: string;
@@ -70,15 +83,22 @@ export interface SentenceItem {
   sentence: string;
   translation?: string;
   note?: string;
-  next_review_at?: string | null;
-  last_reviewed_at?: string | null;
-  state?: number | null;
-  scheduled_days?: number | null;
-  learning_steps?: number | null;
-  reps?: number | null;
-  lapses?: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface DueReview extends ReviewMetadata {
+  sr_id?: string | null;
+  example_id: string;
+  sentence: string;
+  translation?: string;
+  example_note?: string;
+  word_id: string;
+  word: string;
+  word_level: WordLevel;
+  word_note?: string;
+  language_code: string;
+  language_direction: Language["direction"];
 }
 
 export interface SpacedRepetition {
