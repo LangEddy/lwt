@@ -149,7 +149,7 @@ struct FsrsReviewUpdate {
 }
 
 fn fsrs_model() -> Result<FSRS, AppError> {
-    FSRS::new(Some(&DEFAULT_PARAMETERS))
+    FSRS::new(&DEFAULT_PARAMETERS)
         .map_err(|err| AppError::Internal(format!("failed to initialize FSRS scheduler: {err}")))
 }
 

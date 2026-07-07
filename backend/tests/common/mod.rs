@@ -19,7 +19,10 @@ use jsonwebtoken::{
     },
 };
 use lwt_backend::{router::create_router, state::AppState};
-use rsa::{RsaPrivateKey, RsaPublicKey, pkcs1::EncodeRsaPrivateKey, traits::PublicKeyParts};
+use rsa::{
+    RsaPrivateKey, RsaPublicKey, pkcs1::EncodeRsaPrivateKey, rand_core::OsRng,
+    traits::PublicKeyParts,
+};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -39,7 +42,7 @@ static KEYS: OnceLock<TestKeys> = OnceLock::new();
 
 fn keys() -> &'static TestKeys {
     KEYS.get_or_init(|| {
-        let mut rng = rand::thread_rng();
+        let mut rng = OsRng;
         let private_key = RsaPrivateKey::new(&mut rng, 2048).expect("rsa keygen");
         let public_key = RsaPublicKey::from(&private_key);
         let pem = private_key
